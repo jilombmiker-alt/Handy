@@ -1,0 +1,45 @@
+.simple-timer.module-float { --timer-gap:10px; display:flex; flex-direction:column; gap:var(--timer-gap); color:var(--text-1); min-width:0; height:100%; overflow:auto; }
+.timer-head,.timer-actions,.timer-digits { display:flex; align-items:center; gap:12px; }
+.timer-head { justify-content:space-between; color:var(--text-2); font-size:13px; }
+.simple-timer button,.simple-timer select,.simple-timer input { font:inherit; color:var(--text-1); background:transparent; border:1px solid var(--hairline); border-radius:8px; padding:6px 9px; min-height:28px; }
+.simple-timer button { cursor:pointer; }
+.simple-timer button:hover { background:var(--item-hover); }
+.simple-timer :is(button,select,input):focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
+.simple-timer button:disabled { opacity:.45; cursor:default; }
+.timer-digits { justify-content:center; font-size:32px; font-weight:450; font-variant-numeric:tabular-nums; }
+.timer-digits input { width:84px; box-sizing:border-box; font-size:inherit; text-align:center; padding:0; border:0; }
+.timer-digits input::-webkit-inner-spin-button,.timer-digits input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.timer-digits output { min-width:120px; text-align:center; }
+.timer-actions { justify-content:center; gap:8px; }
+.timer-actions button:first-child { background:var(--action-bg); color:var(--action-text); border-color:transparent; min-width:64px; }
+.timer-actions button:last-child { color:var(--text-2); border:0; font-size:12px; }
+.timer-status { min-height:18px; margin:0; font-size:12px; color:var(--text-2); text-align:center; overflow-wrap:anywhere; }
+.timer-status.error { color:var(--danger); }
+.timer-options { border-top:1px solid var(--hairline-soft); padding-top:12px; }
+.timer-options>label:first-child { display:flex; flex-direction:column; gap:6px; font-size:12px; }
+.timer-recording { display:flex; align-items:center; gap:8px; font-size:12px; margin-top:10px; }
+.timer-recording input { min-height:0; }
+.timer-hint { color:var(--text-3); font-size:12px; line-height:1.5; }
+.timer-history { max-height:200px; overflow:auto; }
+.timer-history-row { display:flex; flex-direction:column; gap:4px; padding:10px 0; border-bottom:1px solid var(--hairline-soft); font-size:12px; }
+.timer-history-row span { color:var(--text-3); }
+.simple-timer [hidden] { display:none!important; }
+html #home-bento #home-pomodoro { display:block; padding:8px 12px; min-height:0; }
+html #home-bento #home-pomodoro::before { display:none!important; }
+#home-timer-body { height:100%; }
+#home-pomodoro .timer-compact { --timer-gap:3px; overflow:hidden; }
+#home-pomodoro .timer-head { font-size:11px; }
+#home-pomodoro .timer-head select { padding:0 4px; min-height:24px; font-size:11px; }
+#home-pomodoro .timer-digits { font-size:24px; gap:3px; }
+#home-pomodoro .timer-digits input { width:56px; min-height:24px; }
+#home-pomodoro .timer-actions button { padding:2px 6px; min-height:24px; font-size:11px; }
+#home-pomodoro .timer-actions { gap:6px; }
+#home-pomodoro .timer-actions button:first-child { min-width:44px; }
+#home-pomodoro .timer-actions button { white-space:nowrap; }
+#home-pomodoro .timer-actions button:last-child { width:24px; padding:3px; display:grid; place-items:center; flex-shrink:0; }
+#home-pomodoro .timer-actions svg { width:14px; height:14px; }
+#home-pomodoro .timer-status:empty { display:none; }
+#home-pomodoro .timer-status { font-size:10px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+body.timer-floating .float-bar { height:28px; border:0; }
+body.timer-floating #floating-root { height:calc(100vh - 28px); padding:6px 20px 12px; }
+body.timer-floating { border-radius:22px; }

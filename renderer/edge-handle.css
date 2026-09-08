@@ -1,0 +1,6 @@
+:root { --edge-ink:rgba(100,104,109,.65); --edge-hover:rgba(90,94,99,.95); }
+html,body { margin:0; width:100%; height:100%; overflow:hidden; background:transparent; }
+button { display:block; border:0; padding:0; width:100%; height:100%; background:transparent; cursor:pointer; }
+button::after { content:''; display:block; margin:auto; width:4px; height:52px; background:var(--edge-ink); border-radius:4px; }
+body[data-edge="top"] button::after { width:52px; height:4px; }
+button:hover::after { background:var(--edge-hover); }

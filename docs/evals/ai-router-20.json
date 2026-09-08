@@ -1,0 +1,22 @@
+[
+  { "id": "todo-relative-time", "input": "明天下午三点提醒我交产品方案", "expectedTarget": "todo", "expectedNeedsEdit": false },
+  { "id": "todo-weekday-deadline", "input": "周五之前把预算表发给小李", "expectedTarget": "todo" },
+  { "id": "todo-renew-domain", "input": "记得下个月1号续费域名", "expectedTarget": "todo" },
+  { "id": "todo-exact-night-time", "input": "今天晚上十一点半关掉测试服务器", "expectedTarget": "todo", "expectedNeedsEdit": false },
+  { "id": "todo-vague-followup", "input": "下周提醒我跟进客户", "expectedTarget": "todo", "expectedNeedsEdit": true },
+  { "id": "todo-no-time", "input": "把洗衣服列成待办", "expectedTarget": "todo", "expectedNeedsEdit": true },
+  { "id": "note-customer-conclusion", "input": "客户更关心交付周期和售后响应，把这个结论记录下来", "expectedTarget": "note" },
+  { "id": "note-electron-knowledge", "input": "记一下：Electron 主进程不能做长时间同步计算", "expectedTarget": "note" },
+  { "id": "note-product-idea", "input": "我的想法是首页只显示最常用的四个功能", "expectedTarget": "note" },
+  { "id": "note-pomodoro-knowledge", "input": "把这段知识存下来：番茄工作法通常以25分钟专注和5分钟休息为一个周期", "expectedTarget": "note" },
+  { "id": "note-meeting-decision", "input": "会议结论：先做本地版，不上云", "expectedTarget": "note" },
+  { "id": "link-example-reference", "input": "保存 https://example.com 到产品参考", "expectedTarget": "link" },
+  { "id": "link-electron-docs", "input": "收藏 https://electronjs.org/docs/latest/tutorial/performance", "expectedTarget": "link" },
+  { "id": "link-deepseek-docs", "input": "这个链接以后看 https://api-docs.deepseek.com/guides/json_mode/", "expectedTarget": "link" },
+  { "id": "link-github-tools", "input": "把 https://github.com/openai 放到开发工具", "expectedTarget": "link" },
+  { "id": "unknown-low-confidence", "input": "帮我记一下……下周那个，交付还是交费我没听清，时间也不确定", "expectedTarget": "unknown", "expectedNeedsEdit": true },
+  { "id": "unknown-missing-link", "input": "那个链接帮我存一下", "expectedTarget": "unknown", "expectedNeedsEdit": true },
+  { "id": "todo-vague-action", "input": "明天处理一下", "expectedTarget": "todo", "expectedNeedsEdit": true },
+  { "id": "unknown-no-content", "input": "会议内容你看着办", "expectedTarget": "unknown", "expectedNeedsEdit": true },
+  { "id": "unknown-private-url", "input": "保存 http://localhost:3000 这个地址", "expectedTarget": "unknown", "expectedNeedsEdit": true }
+]

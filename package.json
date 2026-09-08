@@ -1,0 +1,141 @@
+{
+  "name": "to-do-panel",
+  "version": "1.0.0",
+  "description": "Handy - 随时唤出、用完即走的本地工具启动器",
+  "main": "main.js",
+  "author": "xiaopu-ai",
+  "license": "MIT",
+  "scripts": {
+    "test:launcher": "node --test tests/launcher.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/launcher.electron.js && node --check renderer/launcher.js",
+    "test:note-shortcuts": "node --test tests/note-shortcuts.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/note-shortcuts.electron.js",
+    "test:idea-plan": "node --test tests/idea-plan.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/idea-plan.electron.js && node --check renderer/idea-plan-host.js && node --check renderer/idea-plan-model.js",
+    "test:ideas": "node --test tests/weekly-ideas.test.js tests/quick-records.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/weekly-ideas.electron.js && node --check main-quick-review.js && node --check renderer/quick-record-view.js",
+    "test:mail": "node --test tests/mail.test.js tests/mail-protocol.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/mail.electron.js && node --check main-mail.js && node --check renderer/mail.js",
+    "test:materials": "node --test tests/material-packs.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/material-packs.electron.js && node --check main-material-packs.js && node --check renderer/material-packs.js && node --check renderer/credential-card.js && node --check renderer/reference-view.js",
+    "test:windows": "node --test tests/tool-combinations.test.js tests/window-groups.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/window-tools.electron.js && env -u ELECTRON_RUN_AS_NODE electron tests/window-groups.electron.js",
+    "test:timer": "node --test tests/simple-timer.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/simple-timer.electron.js && node --check main-timer.js && node --check renderer/timer-view.js",
+    "test:music": "node --test tests/music-float.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/music-float.electron.js && node --check renderer/music-float.js",
+    "test:clipboard": "node --test tests/quick-clipboard.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/quick-clipboard.electron.js && node --check main-clipboard.js && node --check clipboard-preload.js && node --check renderer/clipboard-host.js && node --check renderer/quick-clipboard-view.js",
+    "test:links": "node --test tests/link-library.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/link-library.electron.js && env -u ELECTRON_RUN_AS_NODE electron tests/link-library-review.electron.js && node --check renderer/link-library.js && node --check main-link-content.js",
+    "test:planner": "node --test tests/planner.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/planner.electron.js",
+    "test:voice": "node --test tests/voice-organizer.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/voice-memo.electron.js && node --check renderer/voice-memo-view.js",
+    "prestart": "node scripts/build-modifier-shortcut.js",
+    "build:shortcut": "node scripts/build-modifier-shortcut.js",
+    "test:shortcuts": "node scripts/test-modifier-shortcut.js && node scripts/build-modifier-shortcut.js && node --test tests/tool-shortcuts.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/tool-shortcuts.electron.js",
+    "preview:modules": "env -u ELECTRON_RUN_AS_NODE electron scripts/preview-modules.js",
+    "test:modules": "env -u ELECTRON_RUN_AS_NODE electron tests/module-floats.electron.js && env -u ELECTRON_RUN_AS_NODE electron tests/panel-placement.electron.js && node --check renderer/module-float.js && node --check renderer/module-host.js && node --check renderer/panel-placement.js && node --check main-panel-placement.js",
+    "test:permissions": "node --test tests/permission-recovery.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/permission-recovery.electron.js && node --check main-permissions.js && node --check build/beforePack.js && node --check build/signing-policy.js",
+    "test:detach": "env -u ELECTRON_RUN_AS_NODE electron tests/detach-handles.electron.js && node --check renderer/detach-handles.js && node --check renderer/detach-preview.js && node --check main-floats.js",
+    "preview:detach": "env -u ELECTRON_RUN_AS_NODE electron scripts/preview-notebook.js --detach",
+    "preview:notebook": "env -u ELECTRON_RUN_AS_NODE electron scripts/preview-notebook.js",
+    "test:notebook": "node --test tests/notebook.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/notebook.electron.js && node --check main-floats.js && node --check renderer/notebook-host.js && node --check renderer/notebook-view.js && node --check renderer/floating.js",
+    "test:quick-records": "node --test tests/quick-records.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/quick-records.electron.js",
+    "test:appearance": "node --test tests/appearance.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/appearance.electron.js && node --check renderer/appearance.js",
+    "test": "node --test tests/*.test.js && env -u ELECTRON_RUN_AS_NODE electron tests/notch-focus.electron.js && env -u ELECTRON_RUN_AS_NODE electron tests/main-process-ai.electron.js && node --check main.js && node --check main-services.js && node --check preload.js && node --check ai/renderer-tool-bridge.js && node --check renderer/domain.js && node --check renderer/effects.js && node --check renderer/app.js && node --check renderer/workspace.js && node --check renderer/ai-inbox.js && node --check renderer/icon-motion.js && node --check renderer/notification.js && node --check build/afterPack.js && node --check scripts/codex-notify.js && node --check scripts/claude-notify.js && node --check scripts/stage06-cdp.js",
+    "start": "electron .",
+    "build": "electron-builder --mac dmg --publish never",
+    "build:zip": "electron-builder --mac zip",
+    "pack": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.dynamicpanel.app",
+    "productName": "Handy",
+    "artifactName": "Handy-${version}-${arch}.${ext}",
+    "copyright": "© 2026 xiaopu-ai",
+    "asar": false,
+    "directories": {
+      "output": "dist.noindex",
+      "buildResources": "build"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "afterPack": "./build/afterPack.js",
+    "beforePack": "./build/beforePack.js",
+    "files": [
+      "ai/**/*",
+      "main.js",
+      "main-services.js",
+      "main-floats.js",
+      "main-tool-combinations.js",
+      "main-window-groups.js",
+      "main-material-packs.js",
+      "main-mail.js",
+      "main-clipboard.js",
+      "clipboard-preload.js",
+      "native/.build/clipboard-bridge.node",
+      "native/.build/music-bridge.node",
+      "main-quick-review.js",
+      "main-planner.js",
+      "main-timer.js",
+      "main-link-content.js",
+      "main-permissions.js",
+      "main-panel-placement.js",
+      "main-modifier-shortcut.js",
+      "native/.build/modifier-shortcut.node",
+      "panel-placement-model.js",
+      "preload.js",
+      "renderer/**/*",
+      "scripts/codex-notify.js",
+      "scripts/claude-notify.js",
+      "package.json",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/.bin",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}"
+    ],
+    "mac": {
+      "identity": null,
+      "icon": "build/to-do-panel-icon.icns",
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "darkModeSupport": true,
+      "extendInfo": {
+        "LSUIElement": false,
+        "NSHighResolutionCapable": true,
+        "CFBundleDisplayName": "Handy",
+        "NSCameraUsageDescription": "Handy需要使用摄像头来显示「镜子」预览。",
+        "NSMicrophoneUsageDescription": "Handy需要使用麦克风来录音并生成转写文本。",
+        "NSAppleEventsUsageDescription": "Handy需要控制「系统事件」来枚举并聚焦当前窗口、发送汽水音乐快捷键。"
+      }
+    },
+    "dmg": {
+      "title": "Handy ${version}",
+      "iconSize": 100,
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    }
+  },
+  "dependencies": {
+    "imapflow": "2.0.0",
+    "ws": "^8.21.3"
+  },
+  "engines": { "node": ">=20" }
+}

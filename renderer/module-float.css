@@ -1,0 +1,28 @@
+.module-float { height:100%; display:flex; flex-direction:column; gap:16px; overflow:auto; scrollbar-width:thin; }
+.module-heading,.module-float>.module-actions,.module-form { flex-shrink:0; }
+.module-heading { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.module-heading h1 { font-size:21px; font-weight:500; letter-spacing:-.03em; margin:0; }
+.module-heading>span,.module-detail,.module-status { color:var(--text-3); font-size:12px; line-height:1.7; }
+.module-actions { display:flex; flex-wrap:wrap; gap:4px; }
+.module-float button { font:inherit; font-size:12px; color:var(--text-2); background:transparent; border:1px solid var(--hairline-soft); border-radius:9px; padding:7px 10px; cursor:pointer; }
+.module-float button:hover { background:var(--item-hover); color:var(--text-1); }
+.module-float :is(button,input,select):focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
+.module-float[aria-busy='true'] button { cursor:progress; }
+.module-form { display:flex; flex-wrap:wrap; gap:10px; padding-bottom:14px; border-bottom:1px solid var(--hairline-soft); }
+.module-form[hidden] { display:none; }
+.module-form label { display:flex; flex-direction:column; gap:5px; flex:1 1 140px; min-width:0; color:var(--text-3); font-size:12px; }
+.module-form input,.module-form select { box-sizing:border-box; min-width:0; width:100%; padding:7px 3px; border:0; border-bottom:1px solid var(--hairline-soft); background:transparent; color:var(--text-1); font:inherit; font-size:14px; }
+.module-form>.module-actions { flex-basis:100%; }
+.module-form button[type='submit'] { background:var(--action-bg); color:var(--action-text); }
+.module-list { flex:1 0 100px; min-height:100px; overflow:auto; scrollbar-width:thin; overflow-wrap:anywhere; }
+.module-row { padding:14px 0; border-bottom:1px solid var(--hairline-soft); }
+.module-row:first-child { padding-top:0; }
+.module-row-text p { margin:0 0 6px; white-space:pre-wrap; line-height:1.6; }
+.module-row-text>span { color:var(--text-3); font-size:12px; }
+.module-row>.module-actions { margin-top:10px; }
+.module-row.done .module-row-text p { text-decoration:line-through; color:var(--text-3); }
+.module-empty { color:var(--text-3); font-size:14px; line-height:1.8; padding:24px 0; }
+.module-clock { font-size:56px; font-weight:300; font-variant-numeric:tabular-nums; letter-spacing:-.045em; margin:32px 0 8px; }
+.module-image { width:100%; height:auto; max-height:100%; object-fit:contain; border-radius:12px; }
+.module-status { margin:0; min-height:20px; flex-shrink:0; }
+.module-status.error { color:var(--danger); }

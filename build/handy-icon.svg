@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="porcelain" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f1f1f0"/>
+    </linearGradient>
+    <filter id="lift" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#141414" flood-opacity=".12"/>
+    </filter>
+  </defs>
+  <path fill="url(#porcelain)" filter="url(#lift)" d="M290 72H734C879 72 952 145 952 290V734C952 879 879 952 734 952H290C145 952 72 879 72 734V290C72 145 145 72 290 72Z"/>
+  <path fill="#232323" d="M336 248C292 248 260 280 260 324V700C260 744 292 776 336 776C380 776 412 744 412 700V598C412 558 451 550 512 550C573 550 612 558 612 598V700C612 744 644 776 688 776C732 776 764 744 764 700V324C764 280 732 248 688 248C644 248 612 280 612 324V426C612 466 573 474 512 474C451 474 412 466 412 426V324C412 280 380 248 336 248Z"/>
+</svg>

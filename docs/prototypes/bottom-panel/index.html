@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>TO-DO Panel · 两种底部面板预览</title>
+  <link rel="stylesheet" href="preview.css">
+  <script src="model.js" defer></script>
+  <script src="preview.js" defer></script>
+</head>
+<body>
+  <header class="preview-bar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span><strong>TO-DO Panel</strong><span class="preview-label">交互预览</span></div>
+    <div class="preview-options">
+      <div class="segments" role="group" aria-label="体验模式">
+        <button type="button" data-mode="launcher" aria-pressed="true">工具启动器</button>
+        <button type="button" data-mode="panel" aria-pressed="false">快捷面板</button>
+      </div>
+      <button type="button" id="theme" class="text-button" aria-pressed="false">黑曜石</button>
+    </div>
+  </header>
+  <main class="desktop" id="desktop">
+    <div class="context-copy">
+      <h1 id="mode-title">一个入口，随叫随到。</h1>
+      <p id="mode-copy">选中工具，就在这里开始。不跳页面，不开新窗。</p>
+      <button type="button" id="summon" class="summon">重新唤出面板 <kbd>Space</kbd></button>
+    </div>
+    <section id="surface" class="surface" aria-label="底部工具面板">
+      <header class="surface-head">
+        <button type="button" id="back" class="text-button" hidden>← 全部工具</button>
+        <div class="surface-heading"><h2 id="surface-title">随手用</h2><span id="surface-subtitle">选一个，现在开始</span></div>
+        <button type="button" id="collapse" class="icon-button" aria-label="收起面板" title="收起面板 · Esc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      </header>
+      <div id="content" class="surface-content"></div>
+      <nav id="tool-nav" class="tool-nav" aria-label="直接切换工具" hidden></nav>
+      <footer class="surface-foot"><span id="activity">所有操作都留在这一个面板</span><span class="key-hints"><kbd>1–8</kbd> 选工具 <kbd>Esc</kbd> 收起</span></footer>
+    </section>
+    <p class="bottom-caption">交互演示，不连接真实工具 · 输入仅在本页暂存，刷新清空</p>
+  </main>
+  <div id="announcement" class="sr-only" role="status" aria-live="polite"></div>
+</body>
+</html>

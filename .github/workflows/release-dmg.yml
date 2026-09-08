@@ -1,0 +1,71 @@
+name: Release macOS DMG
+
+on:
+  workflow_dispatch:
+    inputs:
+      allow_adhoc:
+        description: Explicitly accept an ad-hoc build (not notarized)
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build unsigned Apple Silicon DMG
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Resolve release policy
+        id: release
+        run: node scripts/release-policy.js
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run desktop checks
+        run: npm test
+
+      - name: Build DMG
+        env:
+          PANEL_ALLOW_ADHOC_SIGNING: ${{ inputs.allow_adhoc && '1' || '0' }}
+        run: npm run build
+
+      - name: Verify and checksum DMG
+        id: artifact
+        shell: zsh {0}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          dmg_path="dist.noindex/Handy-${version}-arm64.dmg"
+          app_path="dist.noindex/mac-arm64/Handy.app"
+          [[ -f ${dmg_path} ]]
+          [[ -x "${app_path}/Contents/MacOS/Handy" ]]
+          codesign --verify --deep --strict "${app_path}"
+          hdiutil verify "${dmg_path}"
+          shasum -a 256 "${dmg_path}" > "${dmg_path}.sha256"
+          print "dmg_path=${dmg_path}" >> "${GITHUB_OUTPUT}"
+          print "checksum_path=${dmg_path}.sha256" >> "${GITHUB_OUTPUT}"
+
+      - name: Keep verified build for manual release
+        uses: actions/upload-artifact@v4
+        with:
+          name: Handy-macOS
+          path: |
+            ${{ steps.artifact.outputs.dmg_path }}
+            ${{ steps.artifact.outputs.checksum_path }}

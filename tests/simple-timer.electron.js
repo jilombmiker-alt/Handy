@@ -1,0 +1,29 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {app,BrowserWindow}=require('electron');process.env.PANEL_TEST_MODE='1';process.env.PANEL_TEST_USER_DATA_PATH=fs.mkdtempSync(path.join(os.tmpdir(),'panel-timer-test-'));
+const runtime=require('../main');const pause=ms=>new Promise(r=>setTimeout(r,ms)),run=(w,c)=>w.webContents.executeJavaScript(c,true).catch(e=>{console.error('Renderer check failed:',c);throw e;});
+async function wait(fn){for(let i=0;i<160;i++){try{const r=await fn();if(r)return r;}catch{}await pause(30);}throw Error('timer fixture timeout');}
+async function main(){await app.whenReady();const host=await wait(()=>BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/renderer/index.html')));await wait(()=>run(host,'!!window.TimerHome&&!!window.Notebook'));
+ host.hide();host.show=()=>{};host.focus=()=>{};host.isVisible=()=>true;const original=BrowserWindow.prototype.show;BrowserWindow.prototype.show=function(){};
+ const errors=[];host.webContents.on('console-message',(_e,level,msg)=>{if(level>=3)errors.push(msg);});
+ const get=()=>run(host,'notchAPI.timerGet()');const cmd=async c=>{const s=await get();return run(host,`notchAPI.timerCommand(${JSON.stringify({revision:s.revision,id:s.active?.id,...c})})`);};
+ assert.equal((await get()).history.length,0);assert.equal((await cmd({action:'start',mode:'countdown',seconds:1,stopRecording:true})).error,'no_recording');
+ await run(host,`window.timerStopped=[];window.timerRecordId='recording-fixture';window.PanelRecording={command:async(action,id)=>action==='get'?{ok:true,status:'recording',recordingId:timerRecordId}:action==='timer-stop'?(timerStopped.push(id),{ok:id===timerRecordId}):{ok:false}};true`);
+ assert.equal((await cmd({action:'start',mode:'countdown',seconds:1,title:'会议测试',stopRecording:true})).ok,true);await pause(1100);await runtime.simpleTimer.tick();await runtime.simpleTimer.tick();assert.deepEqual(await run(host,'timerStopped'),['recording-fixture']);assert.equal((await get()).active.notified,true);assert.equal((await get()).history.length,0);await cmd({action:'finish'});
+ await run(host,`timerRecordId='recording-before'`);await cmd({action:'start',mode:'countdown',seconds:1,stopRecording:true});await run(host,`timerRecordId='recording-after'`);await pause(1100);await runtime.simpleTimer.tick();assert.deepEqual(await run(host,'timerStopped'),['recording-fixture','recording-before'],'Only bound ID is sent, never later recording');await cmd({action:'finish'});
+ const before=await run(host,'notchAPI.plannerGet()');const at=Date.now();const item={id:'plan-timer-fixture',title:'阅读资料',start:at,end:at+5400000,status:'planned',area:'learn'};
+ await run(host,`notchAPI.plannerCommand(${JSON.stringify({action:'apply',revision:before.state.revision,requestId:'timer-plan-add',changes:[{mode:'add',...item}]})})`);
+ assert.equal((await run(host,`notchAPI.timerStartPlan('plan-timer-fixture')`)).ok,true);
+ const float=await wait(()=>BrowserWindow.getAllWindows().find(w=>w!==host&&w.webContents.getURL().endsWith('/renderer/floating.html')));await wait(()=>run(float,'!!document.querySelector(".simple-timer")'));await pause(300);assert.equal(float.getBounds().height,210);assert.equal((await get()).active.plannedMs,5400000);assert.equal((await run(host,'notchAPI.plannerGet()')).state.items[0].status,'planned');
+ await cmd({action:'pause'});let s=await get();const elapsed=s.active.currentMs;await pause(600);assert.equal((await get()).active.currentMs,elapsed);await cmd({action:'resume'});await pause(200);await cmd({action:'finish'});
+ const dir=process.env.PANEL_TIMER_CAPTURE_DIR;if(dir)fs.mkdirSync(dir,{recursive:true});
+ for(const theme of ['white','obsidian']){await run(host,`PanelAppearance.setTheme('${theme}');setMode(true)`);await run(float,`document.documentElement.dataset.theme='${theme}'`);await pause(650);
+  if(dir)fs.writeFileSync(path.join(dir,theme+'-float.png'),(await float.capturePage()).toPNG());
+  assert.equal(await run(float,'document.querySelector(".simple-timer").scrollHeight<=document.querySelector(".simple-timer").clientHeight'),true,await run(float,`JSON.stringify({h:document.querySelector('.simple-timer').clientHeight,scroll:document.querySelector('.simple-timer').scrollHeight})`));
+  if(dir){fs.writeFileSync(path.join(dir,theme+'-float.png'),(await float.capturePage()).toPNG());const rect=await run(host,`(()=>{const r=document.getElementById('home-pomodoro').getBoundingClientRect();return {x:Math.floor(r.x),y:Math.floor(r.y),width:Math.ceil(r.width),height:Math.ceil(r.height)}})()`);fs.writeFileSync(path.join(dir,theme+'-home.png'),(await host.capturePage(rect)).toPNG());}
+ }
+ await run(float,`document.querySelector('.timer-actions button:last-child').click()`);await pause(300);assert.equal(float.getBounds().height,520);await run(float,`document.querySelector('.timer-options details').open=true`);await pause(100);if(dir)fs.writeFileSync(path.join(dir,'history.png'),(await float.capturePage()).toPNG());
+ await run(float,`document.querySelector('.timer-head select').value='countup';document.querySelector('.timer-head select').dispatchEvent(new Event('change'));document.querySelector('.timer-actions button').click()`);await pause(700);assert.equal((await get()).active.mode,'countup');
+ await run(float,'floatingAPI.dock()');await pause(100);assert.equal((await get()).active.running,true,'Closing float leaves timer running');await cmd({action:'finish'});
+ assert.deepEqual(errors,[]);BrowserWindow.prototype.show=original;console.log('PASS timer: hidden real IPC, 90min planner link unchanged, exact bound recording fixture, one due event, pause/resume/finish/history, countup, compact float, both themes, close continues. No real microphone.');app.quit();}
+main().catch(e=>{console.error(e);app.exit(1);});

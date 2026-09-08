@@ -1,0 +1,44 @@
+/* Two music forms share the island palette; no fabricated cover art. */
+html:has(.music-floating) { background:transparent; }
+body.music-floating {
+  --music-radius:48px; --music-edge:rgba(var(--ink-rgb),.09); --music-motion:180ms ease-out;
+  border-radius:var(--music-radius); border:1px solid var(--music-edge); box-sizing:border-box;
+  transition:opacity var(--music-motion);
+}
+body.music-floating[data-music-expanded='true'] { --music-radius:24px; }
+body.music-floating.music-idle { opacity:.82; }
+body.music-floating:hover,body.music-floating:has(:focus-visible) { opacity:1; }
+.music-floating .float-bar { position:relative; height:26px; border:0; padding:0 18px; }
+.music-floating .float-bar button { min-height:24px; height:24px; padding:0; color:var(--text-2); border:0; background:transparent; }
+.music-floating #float-handle { position:absolute; left:52px; right:52px; width:auto; font-size:0!important; border-radius:12px; }
+.music-floating #float-handle::after { content:''; display:block; width:24px; height:2px; border-radius:2px; background:var(--hairline); margin:auto; }
+.music-floating #float-handle:hover::after { background:var(--text-3); }
+.music-floating #float-dock { position:absolute; right:18px; width:24px; border-radius:50%; display:grid; place-items:center; }
+.music-floating #float-dock svg { width:14px; height:14px; }
+.music-floating .music-float-more { position:absolute; left:18px; width:28px; border-radius:6px; font-size:16px; letter-spacing:2px; }
+.music-floating #floating-root { height:calc(100vh - 28px); padding:0 22px 12px; }
+.music-float { gap:12px; overflow:auto; }
+.music-float-row { display:grid; grid-template-columns:30px minmax(0,1fr) 100px; align-items:center; column-gap:14px; min-height:58px; flex-shrink:0; }
+.music-float-artwork { display:grid; place-items:center; height:32px; color:var(--text-2); }
+.music-float-artwork svg { width:28px; height:28px; }
+.music-float-copy { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.music-float-copy strong { font-size:15px; font-weight:500; line-height:1.4; }
+.music-float-copy span { font-size:12px; color:var(--text-3); line-height:1.4; }
+.music-float-copy :is(strong,span) { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.music-float-controls { display:flex; align-items:center; justify-content:space-between; gap:2px; }
+.music-float button { transition:background var(--music-motion),color var(--music-motion),opacity var(--music-motion); }
+.music-float-controls button { border:0; background:transparent; padding:0; width:30px; height:36px; border-radius:10px; display:grid; place-items:center; color:var(--text-1); }
+.music-float-controls svg { display:block; width:18px; height:18px; }
+.music-float-controls [data-music-operation='toggle'] svg { width:22px; height:22px; }
+.music-floating button:not(:disabled):hover { background:var(--item-hover); }
+.music-float button:disabled { opacity:.35; cursor:default; }
+.music-float button:not(:disabled):active { opacity:.65; }
+.music-float-footer { display:none; }
+[data-music-expanded='true'] .music-float-footer { display:block; }
+.music-float-status { margin:0; font-size:12px; line-height:1.5; color:var(--text-3); overflow-wrap:anywhere; }
+.music-float-status.error { color:var(--danger); }
+.music-float-actions { display:flex; align-items:center; gap:8px; min-height:58px; flex-shrink:0; }
+.music-float-actions button { flex:1; border:0; background:var(--surface-1); padding:8px 4px; min-height:36px; font-size:12px; border-radius:10px; }
+.music-float [hidden] { display:none; }
+.music-floating button:focus-visible { outline:2px solid var(--focus-ring); outline-offset:1px; }
+@media(prefers-reduced-motion:reduce) { body.music-floating,.music-float button { transition:none; } }

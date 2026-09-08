@@ -1,0 +1,6 @@
+:root { --preview-bg:rgba(255,255,255,.92); --preview-ink:#24272b; --preview-subtle:#555b63; --preview-edge:rgba(30,35,40,.18); }
+:root[data-theme='obsidian'] { --preview-bg:rgba(25,27,30,.94); --preview-ink:#f0f0f0; --preview-subtle:#c4c7cc; --preview-edge:rgba(245,245,245,.22); }
+body { margin:0; padding:4px; background:transparent; font:13px -apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif; color:var(--preview-ink); }
+main { box-sizing:border-box; height:76px; padding:14px 18px; display:flex; flex-direction:column; gap:7px; border:1px solid var(--preview-edge); border-radius:14px; background:var(--preview-bg); }
+strong { font-size:14px; font-weight:550; }
+span { font-size:12px; color:var(--preview-subtle); }

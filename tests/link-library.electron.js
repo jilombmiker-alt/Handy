@@ -1,0 +1,47 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {app,BrowserWindow,ipcMain}=require('electron');process.env.PANEL_TEST_MODE='1';process.env.PANEL_TEST_USER_DATA_PATH=fs.mkdtempSync(path.join(os.tmpdir(),'links-ui-'));delete process.env.NOTCH_LLM_API_KEY;delete process.env.DASHSCOPE_API_KEY;require('../main');
+const run=async(w,code)=>{try{return await w.webContents.executeJavaScript(code,true);}catch(e){console.error('Synthetic test JS failed:',code);throw e;}},wait=async fn=>{const start=Date.now();while(Date.now()-start<12000){const v=await fn();if(v)return v;await new Promise(r=>setTimeout(r,40));}throw Error('wait_timeout');};
+const mock=(name,fn)=>{ipcMain.removeHandler(name);ipcMain.handle(name,fn);};
+mock('links:inspect',()=>({ok:true,title:'设计参考站',preview:'a'.repeat(64),description:'导航与组件参考',source:'metadata',warning:'合成测试：仅页面介绍'}));
+mock('links:image',()=> 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=');
+async function main(){await app.whenReady();const host=await wait(()=>BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('renderer/index.html')));await wait(()=>run(host,'!!window.LinkLibrary'));
+ const consoleErrors=[];host.webContents.on('console-message',(_e,level,msg)=>{if(level===3&&!msg.includes('Autofocus'))consoleErrors.push(msg);});
+ await run(host,`(async()=>{await setMode(true);await setActiveTab('links');})()`);assert.equal((await run(host,'notchAPI.linkSettings()')).aiEnabled,false);
+ const result=await run(host,`LinkLibraryHost.add('https://example.com/reference')`);assert.ok(result.id);await wait(()=>run(host,`document.querySelector('.link-open strong')?.textContent==='设计参考站'`));
+ assert.equal((await run(host,`notchAPI.linkAI({mode:'analyze',id:${JSON.stringify(result.id)}})`)).error,'ai_disabled');
+ const before=await run(host,'LinkLibraryHost.snapshot()');await run(host,`LinkLibraryHost.command({action:'group',name:'我的 UI 灵感',revision:${before.revision}})`);
+ await run(host,`document.querySelector('.ll-detail').open=true`);await wait(()=>run(host,`!!document.querySelector('.ll-edit')`));
+ const group=(await run(host,'LinkLibraryHost.snapshot()')).groups.find(g=>g.name==='我的 UI 灵感');
+ await run(host,`(()=>{const form=document.querySelector('.ll-edit');form.querySelector('[aria-label="我的备注"]').value=${JSON.stringify('  喜欢侧栏的留白\n以后做工作台时参考  ')};form.querySelector('[aria-label="放入分组"]').value=${JSON.stringify(group.id)};form.querySelector('[aria-label="设为日常常用"]').checked=true;form.dispatchEvent(new Event('input'));form.requestSubmit();})()`);
+ await wait(()=>run(host,`LinkLibraryHost.snapshot().groups.find(g=>g.id===${JSON.stringify(group.id)}).links.length===1`));
+ let state=await run(host,'LinkLibraryHost.snapshot()');let saved=state.groups.flatMap(g=>g.links).find(i=>i.id===result.id);assert.equal(saved.note,'  喜欢侧栏的留白\n以后做工作台时参考  ');assert.equal(saved.pinned,true);
+ assert.equal(await run(host,`getComputedStyle(document.querySelector('.link-favicon')).width`),'56px');
+ assert.equal(await run(host,`getComputedStyle(document.querySelector('.link-favicon')).height`),'40px');
+ const note=await run(host,`Notebook.create('note','我的设计思路，保持原文。')`);assert.equal(note.ok,true);state=await run(host,'LinkLibraryHost.snapshot()');
+ await run(host,`LinkLibraryHost.command({action:'patch',id:${JSON.stringify(result.id)},revision:${state.revision},changes:{noteIds:[${JSON.stringify(note.note.id)}]}})`);await run(host,`LinkLibraryHost.openNote(${JSON.stringify(note.note.id)})`);
+ assert.ok(await run(host,`document.querySelector('.ll-note-references')?.textContent.includes('设计参考站')`));assert.equal(await run(host,`Notebook.get(${JSON.stringify(note.note.id)}).content`),'我的设计思路，保持原文。');
+ await run(host,`setActiveTab('links')`);await run(host,`Notebook.detach('module','links')`);const float=await wait(()=>BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('floating.html')));await wait(()=>run(float,`document.querySelector('.module-list')?.textContent.includes('喜欢侧栏')`));
+ // A concurrent edit must not overwrite a dirty local note.
+ await run(host,`document.querySelector('.ll-detail').open=true`);await wait(()=>run(host,`!!document.querySelector('.ll-edit')`));
+ await run(host,`document.querySelector('.ll-edit [aria-label="我的备注"]').value='尚未提交';document.querySelector('.ll-edit').dispatchEvent(new Event('input'))`);
+ state=await run(host,'LinkLibraryHost.snapshot()');await run(float,`floatingAPI.request({action:'command',operation:'library-command',values:{action:'patch',revision:${state.revision},id:${JSON.stringify(result.id)},changes:{pinned:false}}})`);
+ await run(host,`document.querySelector('.ll-edit').requestSubmit()`);await wait(()=>run(host,`document.querySelector('.ll-status').textContent.includes('未覆盖')`));assert.equal(await run(host,`document.querySelector('.ll-edit [aria-label="我的备注"]').value`),'尚未提交');
+ await run(host,`Array.from(document.querySelectorAll('.ll-edit button')).find(b=>b.textContent==='放下编辑').click()`);
+ await run(host,`document.querySelector('.link-library [aria-label="AI 协助"]').click()`);await wait(async()=>(await run(host,'notchAPI.linkSettings()')).aiEnabled);
+ mock('links:ai',async()=>({ok:true,revision:(await run(host,'LinkLibraryHost.snapshot()')).revision,summary:'界面参考',use:'观察导航和留白',scenario:'工作台设计',tags:['UI'],source:'metadata',warning:'合成数据，仅页面简介'}));
+ await run(host,`document.querySelector('.ll-detail').open=true`);await wait(()=>run(host,`!!document.querySelector('.ll-edit')`));await run(host,`Array.from(document.querySelectorAll('.ll-detail button')).find(b=>b.textContent==='AI 提炼这条').click()`);await wait(()=>run(host,`document.querySelector('.ll-proposal').textContent.includes('保留这份')`));
+ assert.equal((await run(host,'LinkLibraryHost.snapshot()')).groups.flatMap(g=>g.links)[0].analysis,undefined);
+ await run(host,`Array.from(document.querySelectorAll('.ll-proposal button')).find(b=>b.textContent==='保留这份提炼').click()`);await wait(()=>run(host,`!!LinkLibraryHost.snapshot().groups.flatMap(g=>g.links)[0].analysis`));
+ saved=(await run(host,'LinkLibraryHost.snapshot()')).groups.flatMap(g=>g.links)[0];assert.equal(saved.note,'  喜欢侧栏的留白\n以后做工作台时参考  ');
+ await run(host,`document.querySelector('.link-library [aria-label="AI 协助"]').click()`);await wait(async()=>!(await run(host,'notchAPI.linkSettings()')).aiEnabled);
+ await run(host,`document.querySelector('[aria-label="搜索标题、备注或用途"]').value='留白';document.querySelector('[aria-label="搜索标题、备注或用途"]').dispatchEvent(new Event('input'))`);assert.equal(await run(host,`document.querySelectorAll('.link-item').length`),1);
+ await run(host,`document.querySelector('[aria-label="显示小图"]').click()`);await wait(()=>run(host,`document.querySelector('.link-library').classList.contains('ll-no-thumbnails')`));assert.equal(await run(host,`getComputedStyle(document.querySelector('.link-favicon')).display`),'none');
+ await run(host,`document.querySelector('[aria-label="搜索标题、备注或用途"]').value='';document.querySelector('[aria-label="搜索标题、备注或用途"]').dispatchEvent(new Event('input'));document.querySelector('[aria-label="显示小图"]').click()`);await wait(()=>run(host,`!document.querySelector('.link-library').classList.contains('ll-no-thumbnails')`));
+ for(let index=0;index<7;index++)await run(host,`LinkLibraryHost.add('https://example.com/idea-${index}',${JSON.stringify(group.id)})`);
+ await wait(()=>run(host,`document.querySelectorAll('.link-item').length===8`));
+ const dir=process.env.PANEL_LINK_CAPTURE_DIR||fs.mkdtempSync(path.join(os.tmpdir(),'link-evidence-'));fs.mkdirSync(dir,{recursive:true});float.hide();
+ for(const theme of ['white','obsidian']){await run(host,`PanelAppearance.setTheme('${theme}');setMode(true);setActiveTab('links')`);host.setBounds({x:40,y:40,width:1288,height:680});host.show();host.focus();await new Promise(r=>setTimeout(r,350));const image=await host.webContents.capturePage();assert.ok(image.getSize().height>500);fs.writeFileSync(path.join(dir,`links-${theme}.png`),image.toPNG());}
+ await run(host,`document.querySelector('.ll-detail').open=true`);await wait(()=>run(host,`!!document.querySelector('.ll-edit')`));await new Promise(r=>setTimeout(r,150));fs.writeFileSync(path.join(dir,'links-details.png'),(await host.webContents.capturePage()).toPNG());
+ float.setSize(360,640);float.show();await new Promise(r=>setTimeout(r,300));assert.equal(await run(float,'document.documentElement.scrollWidth>innerWidth'),false);fs.writeFileSync(path.join(dir,'links-float.png'),(await float.webContents.capturePage()).toPNG());
+ assert.deepEqual(consoleErrors,[]);console.log('PASS links: notes/groups/raw preservation, AI off, proposal before confirm, no note body rewrite, float sync/conflict, search/thumbnails, themes. Synthetic only.');app.quit();}
+main().catch(error=>{console.error(error);app.exit(1);});
