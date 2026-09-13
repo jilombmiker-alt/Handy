@@ -1,7 +1,7 @@
 import { assetPath } from "./assetPath.mjs";
 
-export const DOWNLOAD_URL = "https://github.com/xiaopu-ai/TO-DO-Panel/releases/latest";
-export const GITHUB_URL = "https://github.com/xiaopu-ai/TO-DO-Panel";
+export const DOWNLOAD_URL = "https://github.com/jilombmiker-alt/Handy/releases/latest";
+export const GITHUB_URL = "https://github.com/jilombmiker-alt/Handy";
 
 export type MediaKind = "image" | "video";
 

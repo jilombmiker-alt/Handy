@@ -6,7 +6,7 @@
 
 想到就记，需要就开，用完收起。按快捷键从屏幕底部唤出，搜索或选择工具，直接在同一面板使用，不必再找应用、开小窗、选择第二遍。
 
-[下载 v1.0.0](https://github.com/jilombmiker-alt/TO-DO-Panel/releases/tag/v1.0.0) · [使用说明](docs/USER-GUIDE.md) · [工具组合](#工具可以怎样组合) · [反馈问题](https://github.com/jilombmiker-alt/TO-DO-Panel/issues)
+[下载 v1.0.0](https://github.com/jilombmiker-alt/Handy/releases/tag/v1.0.0) · [使用说明](docs/USER-GUIDE.md) · [工具组合](#工具可以怎样组合) · [反馈问题](https://github.com/jilombmiker-alt/Handy/issues)
 
 ![Handy 纯白工具启动器](docs/screenshots/stage39-launcher.png)
 
@@ -112,4 +112,4 @@ PANEL_ALLOW_ADHOC_SIGNING=1 npm run build
 
 ## License
 
-[MIT](LICENSE)。仓库沿用 `TO-DO-Panel` 地址，应用显示名为 **Handy**。
+[MIT](LICENSE)。仓库地址与应用显示名统一为 **Handy**。

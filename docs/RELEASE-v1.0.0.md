@@ -22,7 +22,7 @@
 
 ## 使用说明与边界
 
-[使用说明](https://github.com/jilombmiker-alt/TO-DO-Panel/blob/main/docs/USER-GUIDE.md) · [工具介绍与组合](https://github.com/jilombmiker-alt/TO-DO-Panel#工具可以怎样组合)
+[使用说明](https://github.com/jilombmiker-alt/Handy/blob/main/docs/USER-GUIDE.md) · [工具介绍与组合](https://github.com/jilombmiker-alt/Handy#工具可以怎样组合)
 
 数据本机保存；AI／转写需自行配置，相关内容发送到配置服务。待办 AI 可关闭，用户确认后保存；录音整理失败保留已保存原音频和转写。音乐以汽水控制为主，不含完整选歌；邮箱是按需只读入口，不含 OAuth／完整客户端。真实服务及客户端兼容性以实际环境为准。
 
