@@ -101,14 +101,15 @@
   function drawMessages() {
     list.replaceChildren(); const accounts = state.accounts.filter(a => !selected || a.id === selected);
     const rows = accounts.flatMap(account => account.items.map(m => ({ ...m, account }))).sort((a, b) => b.date - a.date);
-    coverage.textContent = state.accounts.length ? '每个邮箱：最近 5000 封中的最多 50 封未读 · 手动刷新' : '支持 QQ、163、Gmail、iCloud';
+    const searching=accounts.some(a=>a.search);
+    coverage.textContent = state.accounts.length ? (searching?'搜索结果 · 主题 / 发件人 / 日期筛选 · ':'未读邮件 · ')+'每个邮箱最近 5000 封内，最多显示 50 封' : '支持 QQ、163、Gmail、iCloud';
     for (const a of accounts) if (a.error) {
       const error = el('div', null, 'mail-account-error'); error.append(el('p', `${a.email} · ${errors[a.error] || '连接失败，请重试。'}${a.refreshedAt ? ' 下方为上次结果。' : ''}`));
       button('授权说明', () => openProvider(a.provider, true), error); list.append(error);
     }
     if (!rows.length) {
       const empty = el('div', null, 'mail-empty');
-      empty.append(el('h3', !state.accounts.length ? '把常用邮箱放在一起' : accounts.some(a => !a.refreshedAt) ? '点击刷新，收取未读邮件' : '本次范围内没有未读邮件'));
+      empty.append(el('h3', !state.accounts.length ? '把常用邮箱放在一起' : accounts.some(a => !a.refreshedAt) ? '点击刷新，收取未读邮件' : searching?'本次范围内没有匹配邮件':'本次范围内没有未读邮件'));
       empty.append(el('p', !state.accounts.length ? '先添加一个邮箱。只有主动刷新时才会读取，不向 AI 发送邮件。' : '这里不更改已读状态。更多历史邮件和附件，请到原邮箱处理。'));
       if (!state.accounts.length) button('添加邮箱', () => { management.hidden = false; openAccount(); }, empty);
       list.append(empty);
@@ -176,6 +177,14 @@
     detail.append(box); box.scrollIntoView({ block: 'nearest' }); t.focus();
   }
   window.addEventListener('beforeunload', event => { if (dirty || transferring || busy) { event.preventDefault(); event.returnValue = false; } });
+  window.HandyMail={async showSearch(snapshot){
+    if(dirty||transferring||busy){say('查询已完成，当前编辑仍保留。结束编辑后刷新账号信息查看查询结果。');return false;}
+    reading++;selectedMail=null;bodyText='';selected='';state=snapshot;detail.replaceChildren(el('p','选择一封邮件查看；不改已读状态。','mail-empty'));
+    const options=[el('option','本次查询的全部邮箱')];options[0].value='';
+    for(const a of state.accounts){const option=el('option',a.email);option.value=a.id;options.push(option);}filter.replaceChildren(...options);drawMessages();
+    const rows=state.accounts.filter(a=>!a.error).flatMap(account=>account.items.map(m=>({...m,account})));
+    if(rows.length===1)await readMail(rows[0]);return true;
+  }};
   // Purely local account metadata on launch; no connection or mailbox read until a click.
   void load();
 })();

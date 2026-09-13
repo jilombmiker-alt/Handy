@@ -2,7 +2,7 @@
 
 TO-DO Panel 的中文产品官网，与桌面应用源码一起维护。
 
-- 下载入口：[GitHub Releases](https://github.com/jilombmiker-alt/Handy/releases/latest)
+- 下载入口：[GitHub Releases](https://github.com/jilombmiker-alt/Handy/releases/tag/v0.1.0)
 - 运行环境：Node.js 22.13.0+
 
 ```bash

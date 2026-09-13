@@ -1,6 +1,6 @@
 import { assetPath } from "./assetPath.mjs";
 
-export const DOWNLOAD_URL = "https://github.com/jilombmiker-alt/Handy/releases/latest";
+export const DOWNLOAD_URL = "https://github.com/jilombmiker-alt/Handy/releases/tag/v0.1.0";
 export const GITHUB_URL = "https://github.com/jilombmiker-alt/Handy";
 
 export type MediaKind = "image" | "video";

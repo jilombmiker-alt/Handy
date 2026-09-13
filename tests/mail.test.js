@@ -110,3 +110,20 @@ test('failed atomic rename preserves encrypted data and prior revision', t => {
   finally { fs.renameSync = rename; }
   assert.deepEqual(fs.readFileSync(f.file), before); assert.equal(s.snapshot().revision, saved.revision);
 });
+
+test('voice mail search includes read mail, bounds INBOX, and passes only structured criteria',async t=>{
+  const f=fixture(t);let query;
+  class SearchClient extends FakeClient {async search(q,o){query=q;assert.deepEqual(o,{uid:true});return Array.from({length:50},(_,i)=>i+1);}}
+  const s=createMailService({...f,makeClient:o=>new SearchClient(o)});t.after(()=>s.dispose());
+  const saved=await s.save({...account,revision:0,confirmed:true}),id=saved.accounts[0].id,before=fs.readFileSync(f.file);
+  const r=await s.search(id,{query:'项目',from:'同事',since:'2026-09-10',before:'2026-09-12'},new AbortController().signal);
+  assert.equal(r.ok,true);assert.equal(query.seen,undefined);assert.equal(query.seq,'2001:*');assert.deepEqual(query.or,[{subject:'项目'},{from:'项目'}]);assert.equal(query.from,'同事');assert.ok(query.since instanceof Date);assert.equal(r.accounts[0].search.query,'项目');assert.deepEqual(fs.readFileSync(f.file),before);
+  assert.equal((await s.search(id,{since:'2026-02-31'})).error,'invalid_input');
+});
+test('cancelled voice query does not publish late results or alter existing mailbox cache',async t=>{
+  const f=fixture(t);let release,stall=false;
+  class SearchClient extends FakeClient {async search(q,o){if(stall)await new Promise(r=>release=r);return super.search(q,o);}}
+  const s=createMailService({...f,makeClient:o=>new SearchClient(o)});t.after(()=>s.dispose());
+  const saved=await s.save({...account,revision:0,confirmed:true}),id=saved.accounts[0].id;await s.refresh(id);const previous=s.snapshot().accounts[0].refreshedAt;
+  stall=true;const c=new AbortController(),pending=s.search(id,{unread:true},c.signal);await new Promise(r=>setImmediate(r));c.abort();assert.equal((await pending).error,'cancelled');release();await new Promise(r=>setImmediate(r));assert.equal(s.snapshot().accounts[0].refreshedAt,previous);
+});

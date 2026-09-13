@@ -9,6 +9,6 @@ function build() {
   const headers=candidates.find(p=>p&&fs.existsSync(path.join(p,'node_api.h')));
   if(!headers)throw Error('需要 Node N-API 头文件；可通过 PANEL_NODE_HEADERS 指定 include/node 目录。');
   const output=path.join(root,'native/.build');fs.mkdirSync(output,{recursive:true});
-  for(const moduleName of ['modifier-shortcut','clipboard-bridge','music-bridge'])execFileSync('xcrun',['clang++','-std=c++17','-fobjc-arc','-fblocks','-DNAPI_VERSION=8','-bundle','-undefined','dynamic_lookup','-mmacosx-version-min=11.0','-I',headers,'-framework','AppKit','-framework','ApplicationServices',path.join(root,'native',moduleName+'.mm'),'-o',path.join(output,moduleName+'.node')],{stdio:'inherit'});
+  for(const moduleName of ['modifier-shortcut','clipboard-bridge','music-bridge','desktop-bridge'])execFileSync('xcrun',['clang++','-std=c++17','-fobjc-arc','-fblocks','-DNAPI_VERSION=8','-bundle','-undefined','dynamic_lookup','-mmacosx-version-min=11.0','-I',headers,'-framework','AppKit','-framework','ApplicationServices',path.join(root,'native',moduleName+'.mm'),'-o',path.join(output,moduleName+'.node')],{stdio:'inherit'});
 }
 if(require.main===module)build();module.exports={build};

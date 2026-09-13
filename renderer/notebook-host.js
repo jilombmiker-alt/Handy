@@ -28,14 +28,14 @@
       return { ok:true,note:next,theme:theme() };
     } catch { return { ok:false,error:'storage_failed' }; }
   }
-  async function create(kind, content = '', source = null) {
+  async function create(kind, content = '', source = null, meetingOptions = {}) {
     await current?.flush(); flushNotesEditorSave();
     const all = notes();
     const existing=source?.clipboardKey?all.find(n=>n.sourceClipboardKey===source.clipboardKey):source?.recordId?all.find(n=>n.sourceQuickRecordId===source.recordId):null;
     if(existing)return {ok:true,note:existing,reused:true};
     if (all.length >= 200) { showStatusToast('笔记库已达 200 篇，请先整理或备份旧笔记'); return { ok:false,error:'note_limit' }; }
     const now = Date.now(), note = { id:M.uid(),title:kind === 'meeting' ? '新会议' : '新笔记',titleSource:'user',content,createdAt:now,updatedAt:now };
-    if (kind === 'meeting') note.meeting = M.meeting();
+    if (kind === 'meeting') note.meeting = M.meeting({mode:'free',stage:'live',...meetingOptions,...(content?{freeText:content}:{})});
     if(source?.recordId){note.sourceQuickRecordId=source.recordId;note.sourceRecordingId=source.sourceRecordingId||'';note.title=window.QuickRecordModel.title(source).slice(0,80);}
     if(source?.clipboardKey){if(!/^[a-f0-9]{64}$/.test(source.clipboardKey))return {ok:false,error:'invalid_input'};note.sourceClipboardKey=source.clipboardKey;note.title=content.trim().split('\n')[0].slice(0,80)||'新笔记';}
     try { localStorage.setItem(ARCHIVE,JSON.stringify([note,...all])); }
@@ -59,7 +59,7 @@
   async function detach(kind, id, atCursor = false) {
     await prepareDetach();
     if (!api?.openFloat) return showStatusToast('当前环境不支持悬浮窗口');
-    const result = await api.openFloat({ kind,id,atCursor }).catch(() => null);
+    const result = await api.openFloat({ kind,id,atCursor,detached:true }).catch(() => null);
     if (!result?.ok) showStatusToast(result?.error === 'window_limit' ? '最多同时打开 12 个浮窗，请先收回一些' : result?.error === 'feature_disabled' ? '请先在设置中启用剪贴板，再打开悬浮窗。' : '无法打开浮窗，请重试');
     return result;
   }
@@ -105,7 +105,10 @@
   }
   function beforeRender(note) {
     if (!current) return true;
-    if (current.note.id === note?.id && !floatingKeys.has(`note:${note.id}`)) return false;
+    if (current.note.id === note?.id && !floatingKeys.has(`note:${note.id}`)) {
+      if(current.saved>=current.dirty&&!current.saving&&current.revision!==M.version(note)){current.destroy();current=null;return true;}
+      return false;
+    }
     if (current.saved < current.dirty) { current.flush().then(() => renderNotesLibrary()).catch(() => {}); return false; }
     current.destroy(); current = null; return true;
   }

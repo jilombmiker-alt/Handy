@@ -62,17 +62,25 @@ let simpleTimerInterval=null,timerTickBusy=false;
 let plannerAI=null,plannerTimer=null,plannerLocked=false;
 const voiceMemoModel=require('./renderer/voice-memo-model');
 let voiceOrganizer=null;
+let assistantEntry=null;
 const { createFloatingRuntime } = require('./main-floats');
 const launcherModel = require('./renderer/launcher-model');
 let launcherLayout = 'home';
+let launcherPosition = null; // Session-only manual position; a fresh recall starts centered.
 const { createClipboardRuntime } = require('./main-clipboard');
 const { createPanelPlacement } = require('./main-panel-placement');
 const { MODIFIER_SHORTCUT, createModifierShortcut } = require('./main-modifier-shortcut');
-const modifierShortcut = createModifierShortcut(() => handlePanelShortcutInvocation());
+const modifierShortcut = createModifierShortcut(kind => handlePanelShortcutInvocation(kind));
+let nativeGestureReady=false;
 let shortcutRegistrationError = '';
 let panelPlacement = null;
 const { readPermissionSnapshot, permissionMessage, windowScanFailure, createPermissionRelaunch, applicationLocation, shouldShowOnLaunch, createPermissionRequest } = require('./main-permissions');
 let floatingRuntime = null;
+const onceRecording=require('./main-once-recording').createOnceRecording({
+  start:p=>floatingRuntime?.recorderCommand('timed-start',p),
+  stop:id=>floatingRuntime?.recorderCommand('timer-stop',id),
+});
+let onceRecordingInterval=null;
 let materialPacks = null;
 let mailRuntime = null;
 
@@ -404,7 +412,7 @@ function getExpandedSize(display) {
 function getBoundsForMode(mode, display) {
   const d = display || getWindowDisplay();
   if (mode === 'expanded') {
-    return launcherModel.bounds(d.workArea, launcherLayout);
+    return launcherModel.placedBounds(d.workArea, launcherLayout, launcherPosition);
   }
   return getCenteredBounds(COLLAPSED_WIDTH, getCollapsedHeight(d), d);
 }
@@ -420,6 +428,7 @@ function cancelCollapseWatchdog() {
 function applyMode(mode, display) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   cancelCollapseWatchdog();
+  if (mode === 'collapsed' || currentMode === 'collapsed') launcherPosition = null;
   currentMode = mode;
   panelPlacement?.syncHandle(mode === 'expanded');
   mainWindow.setBounds(getBoundsForMode(mode, display));
@@ -431,6 +440,8 @@ function applyMode(mode, display) {
   if (mode === 'expanded') {
     hideWhenCollapsed = false;
     mainWindow.setOpacity(1);
+    // A queued reveal can finish after the preceding collapse hid the window.
+    if (!mainWindow.isVisible()) mainWindow.show();
   } else {
     // Electron/macOS 会把 y=0 自动夹到菜单栏下沿（例如本机从 0 变成 33），
     // 因而任何可见的折叠窗口都会压住当前应用。收起态只保留原生 Tray 图标，
@@ -1079,6 +1090,11 @@ function createWindow() {
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
+  // Native title-bar drag only. Programmatic resize must not mark the window moved.
+  mainWindow.on('will-move', (_event, bounds) => {
+    if (currentMode === 'expanded') launcherPosition = {x:bounds.x,y:bounds.y};
+  });
+
   // Escape 在到达页面前会被 Chromium 浏览器层吞掉（实测 document keydown 收不到），
   // 用 before-input-event 在分发前拦截并转发给渲染层处理（退出输入 / 收起面板）
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -1087,6 +1103,8 @@ function createWindow() {
       mainWindow.webContents.send('key:escape');
     }
   });
+  // A renderer may veto quit to protect unsaved audio. Keep timers/services alive.
+  mainWindow.webContents.on('will-prevent-unload',()=>{isQuitting=false;});
 
   // 失焦时让渲染层走完整退场动画，再由渲染层请求缩小原生窗口。
   mainWindow.on('blur', () => {
@@ -1312,11 +1330,18 @@ function setPanelShortcut(shortcut) {
     globalShortcut.unregister(configuredShortcut);
   }
   let registered = false;
+  const register = candidate => {
+    nativeGestureReady=modifierShortcut.start(candidate);
+    if(candidate===MODIFIER_SHORTCUT)return nativeGestureReady;
+    const reserved=globalShortcut.register(candidate,()=>nativeGestureReady?modifierShortcut.press():handlePanelShortcutInvocation('short'));
+    if(!reserved){modifierShortcut.stop();nativeGestureReady=false;}
+    return reserved;
+  };
   try {
-    registered = shortcut === MODIFIER_SHORTCUT ? modifierShortcut.start() : globalShortcut.register(shortcut, handlePanelShortcutInvocation);
+    registered = register(shortcut);
   } catch (error) {}
   if (registered) {
-    shortcutRegistrationError = '';
+    shortcutRegistrationError = nativeGestureReady?'':modifierShortcut.error;
     configuredShortcut = shortcut;
     return true;
   }
@@ -1324,7 +1349,7 @@ function setPanelShortcut(shortcut) {
   shortcutRegistrationError = shortcut === MODIFIER_SHORTCUT ? modifierShortcut.error : 'occupied';
   if (previousShortcut && isSafePanelShortcut(previousShortcut)) {
     try {
-      if (previousShortcut === MODIFIER_SHORTCUT ? modifierShortcut.start() : globalShortcut.register(previousShortcut, handlePanelShortcutInvocation)) configuredShortcut = previousShortcut;
+      if (register(previousShortcut)) configuredShortcut = previousShortcut;
     } catch (error) {}
   }
   return false;
@@ -1345,7 +1370,7 @@ function showMainWindowForShortcut() {
   return true;
 }
 
-function handlePanelShortcutInvocation() {
+function handlePanelShortcutInvocation(kind='short') {
   if (!showMainWindowForShortcut()) return;
   if (pendingShortcutTest && configuredShortcut === pendingShortcutTest.candidate) {
     pendingShortcutTest.triggered = true;
@@ -1359,7 +1384,7 @@ function handlePanelShortcutInvocation() {
     if (currentMode === 'collapsed') mainWindow.webContents.send('shortcut:toggle-panel');
     return;
   }
-  mainWindow.webContents.send('shortcut:toggle-panel');
+  mainWindow.webContents.send('launcher:open',{kind:'voice',gesture:kind==='long'?'long':'short'});
 }
 
 function restoreShortcutAfterTest(reason = 'cancelled') {
@@ -1400,6 +1425,7 @@ function openRendererPanel(channel, payload, capture = true) {
   if (!mainWindow || mainWindow.isDestroyed()) createWindow();
   if (!mainWindow || mainWindow.isDestroyed()) return;
   hideWhenCollapsed = false;
+  launcherPosition = null;
   repositionWindow(getTargetDisplay());
   mainWindow.setFocusable(true);
   if (!mainWindow.isVisible()) {
@@ -1612,6 +1638,16 @@ async function removeMirrorImage(imageId) {
   return { ok: true, canceled: false, gallery: publicMirrorGallery(next) };
 }
 
+let trayActivity='',trayTimerItem=null,lastTrayTitle='';
+function refreshTimerTray(){
+  if(!tray||tray.isDestroyed())return;
+  const timer=require('./main-timer').timerPresentation(timerStore.snapshot());
+  const other=trayActivity.replace(/(?: · )?计时中/g,'');
+  const title=[timer.title,other].filter(Boolean).join(' · ');
+  if(title!==lastTrayTitle){tray.setTitle(title);lastTrayTitle=title;}
+  tray.setToolTip(title?`Handy · ${title} · 点击菜单可找回工具`:'Handy · 点击打开菜单');
+  if(trayTimerItem)trayTimerItem.label=timer.menu;
+}
 function refreshTrayMenu() {
   if (!tray) return;
   const autoLaunch = isAutoLaunchEnabled();
@@ -1622,6 +1658,7 @@ function refreshTrayMenu() {
       label: '打开Handy',
       click: toggleVisibility,
     },
+    { id:'active-timer', label:'打开计时小窗',click:()=>void floatingRuntime?.open({kind:'module',id:'pomodoro',detached:true}) },
     { type: 'separator' },
     {
       label: 'API 配置…',
@@ -1676,7 +1713,7 @@ function refreshTrayMenu() {
           title: '关于Handy',
           message: 'Handy',
           detail:
-            `版本 ${app.getVersion()}\n\n一个开源、常驻 macOS 屏幕顶部的本地工作台。工作区数据默认保存在本机；账号密码与 API Key 由 macOS 安全存储加密。\n\nMIT License`,
+            `版本 ${app.getVersion()}${require('./package.json').releaseChannel === 'test' ? ' 测试版' : ''}\n\n语音驱动的本地桌面行动助手。通过快捷键口述想法、调用已接入工具。优先本机与固定接口；Computer Use 尚未接入。\n\n记录默认保存在本机；启用云端识别或 AI 时，相关内容发送给所选服务。API Key 由系统安全存储加密。\n\nMIT License`,
           buttons: ['查看 GitHub', '好'],
           defaultId: 1,
           cancelId: 1,
@@ -1694,6 +1731,7 @@ function refreshTrayMenu() {
     },
   ]);
   tray.setContextMenu(menu);
+  trayTimerItem=menu.getMenuItemById('active-timer');refreshTimerTray();
 }
 
 function createTray() {
@@ -1834,9 +1872,17 @@ ipcMain.handle('window:metrics', () => {
 });
 ipcMain.handle('launcher:layout', (event, mode) => {
   if (!isTrustedMainRenderer(event) || event.senderFrame !== event.sender.mainFrame) return {ok:false,error:'forbidden'};
-  if (!['home','tool',...launcherModel.tools.map(t=>t.id)].includes(mode)) return {ok:false,error:'invalid_layout'};
+  if (!['home','home-reply','home-plan','home-expanded','home-wide','tool',...launcherModel.tools.map(t=>t.id)].includes(mode)) return {ok:false,error:'invalid_layout'};
   launcherLayout = mode;
   if (currentMode === 'expanded') repositionWindow();
+  return {ok:true};
+});
+ipcMain.handle('launcher:position', (event, position) => {
+  if (!isTrustedMainRenderer(event) || event.senderFrame !== event.sender.mainFrame) return {ok:false,error:'forbidden'};
+  if (!['left','center','right'].includes(position) || currentMode !== 'expanded') return {ok:false,error:'invalid_position'};
+  const d=getWindowDisplay(),b=launcherModel.bounds(d.workArea,launcherLayout);
+  launcherPosition=position==='center'?null:{x:position==='left'?d.workArea.x+12:d.workArea.x+d.workArea.width-b.width-12,y:b.y};
+  repositionWindow(d);
   return {ok:true};
 });
 
@@ -1942,6 +1988,7 @@ async function getPermissionStatusSnapshot() {
     ...snapshot,
     message: permissionMessage(snapshot),
     appVersion: app.getVersion(),
+    releaseChannel: require('./package.json').releaseChannel || 'stable',
     executable: process.execPath,
     packaged: app.isPackaged,
     ...applicationLocation(app),
@@ -2765,31 +2812,30 @@ async function sendSodaShortcut(action) {
   }
 }
 
+const musicStateModel = require('./renderer/music-state');
+let musicMetadataPending = null, musicMetadataSnapshot = null;
 ipcMain.handle('music:status', async (event) => {
   if (!isTrustedMainRenderer(event) || event.senderFrame !== event.sender.mainFrame) return { ok:false,error:'forbidden' };
-  const installed = fs.existsSync(SODA_MUSIC_APP);
-  const running = installed ? await sodaMusicRunning() : false;
-  return {
-    ok: true,
-    installed,
-    running,
-    sessionActive: running,
-    playing: running ? null : false,
-    metadataAvailable: false,
-    title: '',
-    artist: '',
-    icon: null,
-  };
+  if(musicMetadataPending)return musicMetadataPending;
+  if(musicMetadataSnapshot&&Date.now()-musicMetadataSnapshot.observedAt<700)return musicMetadataSnapshot;
+  musicMetadataPending=(async()=>{
+    const installed=fs.existsSync(SODA_MUSIC_APP),running=installed?await sodaMusicRunning():false;
+    let raw={};
+    if(running){try{raw=JSON.parse(await getSodaMusicBridge().status());}catch{raw={error:'metadata_unavailable'};}}
+    musicMetadataSnapshot=musicStateModel.normalize({...raw,installed,running},musicMetadataSnapshot);
+    return musicMetadataSnapshot;
+  })();
+  try{return await musicMetadataPending;}finally{musicMetadataPending=null;}
 });
 
 ipcMain.handle('music:control', async (event, action) => {
   if (!isTrustedMainRenderer(event) || event.senderFrame !== event.sender.mainFrame) return { ok:false,error:'forbidden' };
-  if (!['open','toggle','play','pause','next','previous'].includes(action)) return {ok:false,error:'invalid_action'};
+  if (!['open','open_background','toggle','play','pause','next','previous'].includes(action)) return {ok:false,error:'invalid_action'};
   if (!fs.existsSync(SODA_MUSIC_APP)) return { ok: false, error: 'not_installed' };
   if (sodaMusicBusy) return {ok:false,error:'music_busy'};
   sodaMusicBusy = true;
   try {
-    if (action === 'open') return await openSodaMusic() ? {ok:true} : {ok:false,error:'launch_failed'};
+    if (action === 'open'||action === 'open_background') return await openSodaMusic(action === 'open_background') ? {ok:true} : {ok:false,error:'launch_failed'};
     if (!systemPreferences.isTrustedAccessibilityClient(false)) return {ok:false,error:'accessibility_permission_required'};
     try { if (!getSodaMusicBridge()) return {ok:false,error:'music_control_unavailable'}; }
     catch { return {ok:false,error:'music_control_unavailable'}; }
@@ -2933,29 +2979,18 @@ function closeTranscriptionSession(session, result = {}) {
 function handleTranscriptionMessage(session, raw) {
   let message;
   try { message = JSON.parse(String(raw)); } catch (error) { return; }
-  if (message.type === 'session.created' || message.type === 'session.updated') {
+  if(message.type==='session.created')return;
+  if (message.type === 'session.updated') {
+    session.ready=true;session.configured?.();
     emitTranscription(session, { type: 'status', status: 'connected' });
     return;
   }
-  if (message.type === 'conversation.item.input_audio_transcription.text') {
-    session.interim = `${String(message.text || '').trim()}${String(message.stash || '').trim()}`;
+  if (require('./renderer/transcription-model').update(session,message)) {
+    if(session.contaminated||(session.audibleSamples||0)<1920)return;
     emitTranscription(session, {
       type: 'transcript',
       final: session.finalSegments.join(' ').trim(),
       interim: session.interim,
-    });
-    return;
-  }
-  if (message.type === 'conversation.item.input_audio_transcription.completed') {
-    const transcript = String(message.transcript || '').trim();
-    if (transcript && session.finalSegments[session.finalSegments.length - 1] !== transcript) {
-      session.finalSegments.push(transcript);
-    }
-    session.interim = '';
-    emitTranscription(session, {
-      type: 'transcript',
-      final: session.finalSegments.join(' ').trim(),
-      interim: '',
     });
     return;
   }
@@ -2966,7 +3001,10 @@ function handleTranscriptionMessage(session, raw) {
     return;
   }
   if (message.type === 'session.finished') {
-    closeTranscriptionSession(session, { ok: !session.lastError, error: session.lastError });
+    session.finished=true;
+    const validSpeech=!session.contaminated&&(session.audibleSamples||0)>=1920;
+    if(!validSpeech){session.finalSegments=[];session.interim='';}
+    closeTranscriptionSession(session, { ok: validSpeech&&!session.lastError, error: session.lastError||(!validSpeech?'no_valid_speech':null) });
   }
 }
 
@@ -3054,27 +3092,17 @@ ipcMain.handle('transcription:start', (event) => {
       clearTimeout(session.connectTimer);
       resolve(result);
     };
+    session.configured=()=>settleStart({ok:true});
     session.connectTimer = setTimeout(() => {
       settleStart({ ok: false, error: 'connect_timeout' });
       closeTranscriptionSession(session, { ok: false, error: 'connect_timeout' });
     }, 8000);
     socket.on('open', () => {
-      session.ready = true;
       socket.send(JSON.stringify({
         event_id: transcriptionEventId(),
         type: 'session.update',
-        session: {
-          input_audio_format: 'pcm',
-          sample_rate: TRANSCRIPTION_SAMPLE_RATE,
-          input_audio_transcription: { language: 'zh' },
-          turn_detection: {
-            type: 'server_vad',
-            threshold: 0,
-            silence_duration_ms: 400,
-          },
-        },
+        session: require('./renderer/transcription-model').config,
       }));
-      settleStart({ ok: true });
     });
     socket.on('message', (data) => handleTranscriptionMessage(session, data));
     socket.on('error', (error) => {
@@ -3085,7 +3113,8 @@ ipcMain.handle('transcription:start', (event) => {
     });
     socket.on('close', () => {
       settleStart({ ok: false, error: 'connection_closed' });
-      closeTranscriptionSession(session, { ok: !session.lastError, error: session.lastError || null });
+      if(!session.closed)emitTranscription(session,{type:'error',message:'转写连接提前关闭，已收到的文字保留。'});
+      closeTranscriptionSession(session, { ok: session.finished&&!session.lastError, error: session.lastError || 'connection_closed' });
     });
   });
 });
@@ -3095,6 +3124,7 @@ ipcMain.on('transcription:audio', (event, bytes) => {
   if (!session || !session.ready || session.closed || session.socket.readyState !== WebSocket.OPEN) return;
   const buffer = Buffer.from(bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes || []);
   if (!buffer.length || buffer.length > 512 * 1024) return;
+  require('./renderer/transcription-model').observePcm(session,buffer);
   session.socket.send(JSON.stringify({
     event_id: transcriptionEventId(),
     type: 'input_audio_buffer.append',
@@ -3217,8 +3247,49 @@ ipcMain.handle('voice:cancel',(event,id)=>{
 });
 
 function plannerAllowed(event){return event.senderFrame===event.sender.mainFrame&&(isTrustedMainRenderer(event)||floatingRuntime?.plannerSender(event));}
+const desktopActionsModule=require('./main-desktop-actions');
+let desktopBridge=null;
+const desktopActions=desktopActionsModule.createDesktopActions({
+  inventory:()=>{desktopBridge ||= require('./native/.build/desktop-bridge.node');return JSON.parse(desktopBridge.inventory());},
+  running:path=>desktopBridge.running(path),launch:desktopActionsModule.openApplication,
+  openURL:url=>shell.openExternal(url),mail:()=>mailRuntime,
+  playMusic:desktopActionsModule.createSodaPlayback({installed:()=>fs.existsSync(SODA_MUSIC_APP),trusted:()=>systemPreferences.isTrustedAccessibilityClient(false),busy:()=>sodaMusicBusy,setBusy:v=>{sodaMusicBusy=v;},bridge:getSodaMusicBridge,open:()=>openSodaMusic(),normalize:musicStateModel.normalize}),
+});
+ipcMain.handle('desktop:action',async(event,input)=>{
+  if(!isTrustedMainRenderer(event)||event.senderFrame!==event.sender.mainFrame)return {ok:false,error:'forbidden'};
+  if(!input||JSON.stringify(input).length>4000)return {ok:false,error:'invalid_input'};
+  if(plannerLocked)return {ok:false,error:'screen_locked'};
+  if(input.action?.action==='search_mail'&&readAppSettings().features.mail===false)return {ok:false,error:'feature_disabled'};
+  if(input.action?.action==='play_music'&&readAppSettings().features.music===false)return {ok:false,error:'feature_disabled'};
+  return desktopActions.run(event.sender.id,input,text=>{if(!event.sender.isDestroyed())event.sender.send('desktop:progress',{requestId:input.requestId,text});});
+});
+app.on('will-quit',()=>desktopActions.dispose());
+app.on('before-quit',()=>desktopActions.cancelAll());
+ipcMain.handle('assistant:generate',async(event,input)=>{
+  if(!isTrustedMainRenderer(event)||event.senderFrame!==event.sender.mainFrame)return {ok:false,error:'forbidden'};
+  if(!input||JSON.stringify(input).length>100000)return {ok:false,error:'invalid_input'};
+  const snapshot=plannerStore.snapshot();if(!snapshot.ok)return snapshot;
+  assistantEntry ||= require('./ai/assistant-entry').createAssistantEntry({getConfig:resolveLlmConfig,validateEndpoint:validatePublicHttpUrl,fetchImpl:fetch});
+  const result=await assistantEntry.generate(event.sender.id,input,snapshot.state);
+  if(plannerStore.snapshot().state?.aiEnabled!==true)return {ok:false,error:'ai_disabled'};
+  return result;
+});
+ipcMain.handle('assistant:cancel',event=>{
+  if(!isTrustedMainRenderer(event)||event.senderFrame!==event.sender.mainFrame)return {ok:false,error:'forbidden'};
+  assistantEntry?.cancel(event.sender.id);desktopActions.cancel(event.sender.id);return {ok:true};
+});
+if(IS_TEST_RUNTIME)module.exports.assistant={setService(service){assistantEntry=service;}};
 function timerAllowed(event){return event.senderFrame===event.sender.mainFrame&&(isTrustedMainRenderer(event)||floatingRuntime?.timerSender(event));}
 ipcMain.handle('timer:get',event=>timerAllowed(event)?timerStore.snapshot():{ok:false,error:'forbidden'});
+ipcMain.handle('recordings:timed-start',(event,p)=>{
+  if(!isTrustedMainRenderer(event)||event.senderFrame!==event.sender.mainFrame)return {ok:false,error:'forbidden'};
+  return onceRecording.begin(p);
+});
+ipcMain.handle('recordings:timed-cancel',(event,id)=>{
+  if(!isTrustedMainRenderer(event)||event.senderFrame!==event.sender.mainFrame)return {ok:false,error:'forbidden'};
+  return onceRecording.cancel(id);
+});
+if(IS_TEST_RUNTIME)module.exports.onceRecording=onceRecording;
 ipcMain.handle('timer:command',async(event,c)=>{
   if(!timerAllowed(event))return {ok:false,error:'forbidden'};
   if(!c||JSON.stringify(c).length>3000)return {ok:false,error:'invalid_request'};
@@ -3229,7 +3300,9 @@ ipcMain.handle('timer:command',async(event,c)=>{
     if(!r?.ok||!['recording','paused'].includes(r.status)||!r.recordingId)return {ok:false,error:'no_recording'};
     safe.recordingId=r.recordingId;
   }
-  return timerStore.command(safe);
+  const result=timerStore.command(safe);refreshTimerTray();
+  if(result.ok&&['start','replace'].includes(safe.action))await floatingRuntime?.open({kind:'module',id:'pomodoro',detached:true});
+  return result;
 });
 ipcMain.handle('timer:plan',async(event,id)=>{
   if(!timerAllowed(event))return {ok:false,error:'forbidden'};
@@ -3237,14 +3310,14 @@ ipcMain.handle('timer:plan',async(event,id)=>{
   if(!plan)return {ok:false,error:'not_found'};
   const snapshot=timerStore.snapshot();if(!snapshot.ok)return snapshot;
   const result=timerStore.command({action:'start',revision:snapshot.revision,mode:plan.scheduled===false?'countup':'countdown',seconds:plan.scheduled===false?1800:Math.max(1,Math.ceil((plan.end-plan.start)/1000)),title:plan.title,planId:plan.id});
-  if(result.ok)await floatingRuntime?.open({kind:'module',id:'pomodoro'});return result;
+  if(result.ok){refreshTimerTray();await floatingRuntime?.open({kind:'module',id:'pomodoro',detached:true});}return result;
 });
 async function tickSimpleTimer(){
   if(isQuitting||timerTickBusy)return;timerTickBusy=true;
   try{const result=timerStore.tick();if(result.due){const s=result.due;let suffix='可继续计时或结束，不会自动完成待办。';
     if(s.recordingId){const stopped=await floatingRuntime?.recorderCommand('timer-stop',s.recordingId);suffix=stopped?.ok?'已请求结束关联录音，音频按原流程保存。':'关联录音已变化或无法结束，请查看录音状态。';}
     enqueueTaskNotification({eventId:`timer-${s.id}`,taskId:`timer-${s.id}`,source:'pomodoro',project:'计时',title:s.title||'计时到点',body:suffix,detail:suffix,completedAt:Date.now()});
-  }}finally{timerTickBusy=false;}
+  }}finally{refreshTimerTray();timerTickBusy=false;}
 }
 if(IS_TEST_RUNTIME)module.exports.simpleTimer={store:timerStore,tick:tickSimpleTimer};
 ipcMain.handle('planner:get',event=>plannerAllowed(event)?plannerStore.snapshot():{ok:false,error:'forbidden'});
@@ -3254,7 +3327,7 @@ ipcMain.handle('planner:command',(event,c)=>{
   try{if(JSON.stringify(c).length>1024*1024)return {ok:false,error:'invalid_request'};}catch{return {ok:false,error:'invalid_request'};}
   if(c?.aiProposal&&plannerStore.snapshot().state?.aiEnabled!==true)return {ok:false,error:'ai_disabled'};
   const result=plannerStore.command(c);
-  if(result.ok&&c.action==='settings'&&c.aiEnabled===false)plannerAI?.dispose();
+  if(result.ok&&c.action==='settings'&&c.aiEnabled===false){plannerAI?.dispose();assistantEntry?.dispose();}
   return result;
 });
 ipcMain.handle('planner:suggest',async(event,input)=>{
@@ -3667,7 +3740,7 @@ app.whenReady().then(() => {
     getMain: () => mainWindow,
     combinationFile:()=>workspacePath('tool-combinations-v1.json'),
     timerActive:()=>timerStore.snapshot()?.active?.running===true,
-    activityChanged:text=>{if(tray&&!tray.isDestroyed()){tray.setTitle(text);tray.setToolTip(text?`Handy · ${text}（展开工具可继续操作）`:'Handy');}},
+    activityChanged:text=>{trayActivity=text;refreshTimerTray();},
     positionFile: () => workspacePath('floating-positions-v1.json'),
     prep: createMeetingPrep({ getConfig: resolveLlmConfig, validateEndpoint: validatePublicHttpUrl, fetchImpl: fetch }),
     publicConfig: publicTranscriptionConfig,
@@ -3689,12 +3762,12 @@ app.whenReady().then(() => {
     allowed: e => isTrustedMainRenderer(e) && e.senderFrame === e.sender.mainFrame && readAppSettings().features.mail !== false,
   });
   if (!IS_TEST_RUNTIME) createTray();
-  powerMonitor.on('lock-screen',()=>{plannerLocked=true;quickClipboard?.invalidate();});
-  powerMonitor.on('suspend',()=>{plannerLocked=true;quickClipboard?.invalidate();});
+  powerMonitor.on('lock-screen',()=>{plannerLocked=true;desktopActions.cancelAll();quickClipboard?.invalidate();});
+  powerMonitor.on('suspend',()=>{plannerLocked=true;desktopActions.cancelAll();quickClipboard?.invalidate();});
   powerMonitor.on('unlock-screen',()=>{plannerLocked=false;tickPlannerReminders();});
   powerMonitor.on('resume',()=>{plannerLocked=false;tickPlannerReminders();});
   if(!IS_TEST_RUNTIME){plannerTimer=setInterval(tickPlannerReminders,15000);plannerTimer.unref();}
-  if(!IS_TEST_RUNTIME){simpleTimerInterval=setInterval(()=>void tickSimpleTimer(),500);simpleTimerInterval.unref();powerMonitor.on('resume',()=>void tickSimpleTimer());}
+  if(!IS_TEST_RUNTIME){simpleTimerInterval=setInterval(()=>void tickSimpleTimer(),500);simpleTimerInterval.unref();onceRecordingInterval=setInterval(()=>void onceRecording.tick(),250);onceRecordingInterval.unref();powerMonitor.on('resume',()=>{void tickSimpleTimer();void onceRecording.tick();});}
   watchDisplayChanges();
   ensureClipImagesDir();
   ensureRecordingsDir();
@@ -3719,18 +3792,20 @@ app.on('before-quit', (event) => {
   if (quickClipboard && !quickClipboard.beginQuit(() => app.quit())) { event.preventDefault(); return; }
   if (floatingRuntime && !floatingRuntime.beginQuit(() => app.quit())) { event.preventDefault(); return; }
   isQuitting = true;
-  timerStore.pauseForExit();
-  floatingRuntime?.dispose();
-  quickClipboard?.dispose();
   hideWhenCollapsed = false;
 });
 
 app.on('will-quit', () => {
+  timerStore.pauseForExit();
+  floatingRuntime?.dispose();
+  quickClipboard?.dispose();
+  clearInterval(onceRecordingInterval);
   materialPacks?.dispose();
   mailRuntime?.dispose();
   clearInterval(plannerTimer);plannerAI?.dispose();
   clearInterval(simpleTimerInterval);
   voiceOrganizer?.dispose();
+  assistantEntry?.dispose();
   modifierShortcut.stop();
   panelPlacement?.dispose();
   cancelCollapseWatchdog();

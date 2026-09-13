@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build unsigned Apple Silicon DMG
+    name: Build ad-hoc Apple Silicon DMG (no personal certificate)
     runs-on: macos-14
     timeout-minutes: 45
 

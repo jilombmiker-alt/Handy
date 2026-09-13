@@ -254,7 +254,7 @@
     Object.assign(current,{preview:inspected.preview||'',description:inspected.description||'',source:inspected.source||'metadata',warning:inspected.warning||''});
     try{localStorage.setItem(LINKS_KEY,JSON.stringify(next));linkGroups=next;renderLinkGroups();return {ok:true};}catch{return {ok:false,error:'save_failed'};}
   }
-  window.LinkLibraryHost={snapshot:librarySnapshot,command:libraryCommand,refreshPreview:refreshLinkPreview,render:renderLinkGroups,add:(url,group)=>addLink(url,group),notes:()=>window.Notebook?.references().notes.filter(n=>!window.Notebook.get(n.id)?.meeting)||[],openNote:async id=>{if(!window.Notebook?.get(id))return {ok:false,error:'not_found'};await window.Notebook.flushForExit();selectedNoteId=id;if(notesSearch)notesSearch.value='';await setActiveTab('notes');renderNotesLibrary();return {ok:true};}};
+  window.LinkLibraryHost={snapshot:librarySnapshot,command:libraryCommand,refreshPreview:refreshLinkPreview,render:renderLinkGroups,add:(url,group,options)=>addLink(url,group,options),notes:()=>window.Notebook?.references().notes.filter(n=>!window.Notebook.get(n.id)?.meeting)||[],openNote:async id=>{if(!window.Notebook?.get(id))return {ok:false,error:'not_found'};await window.Notebook.flushForExit();selectedNoteId=id;if(notesSearch)notesSearch.value='';await setActiveTab('notes');renderNotesLibrary();return {ok:true};}};
 
   function persistLinks() {
     saveJson(LINKS_KEY, linkGroups);
@@ -799,6 +799,7 @@
   let mediaStream = null;
   let mediaRecorder = null;
   let audioChunks = [];
+  let recordingBytes=0;
   let speechRecognition = null;
   let speechRecognitionBlocked = false;
   let speechRecognitionError = '';
@@ -811,6 +812,7 @@
   let interimTranscript = '';
   let recordingTimer = null;
   let recordingStopDurationMs = 0;
+  let timedRecording=null;
   let recordingCaptureIssue = '';
   let recordingDraftId = '';
   let recordingMarkers=[],pendingRecording=null;
@@ -841,6 +843,8 @@
   let transcriptionPcmQueue = [];
   let transcriptionFinishPromise = null;
   let recordingPurpose = 'memo';
+  let recordingSpeechComplete=false;
+  const assistantSpeechResults=new Map();
   let strandsAudioContext = null;
   let strandsAudioSource = null;
   let strandsAnalyser = null;
@@ -1023,7 +1027,7 @@
     permissionStatuses = result;
     renderPermissionStatuses();
     if (announce && settingsPermissionNote) {
-      const identity = result?.executable ? ` 当前运行：${result.packaged ? '安装版' : '开发预览'} ${result.appVersion || ''}，${result.executable}。` : '';
+      const identity = result?.executable ? ` 当前运行：${result.packaged ? '安装版' : '开发预览'} ${result.appVersion || ''}${result.releaseChannel === 'test' ? ' 测试版' : ''}，${result.executable}。` : '';
       settingsPermissionNote.textContent = result
         ? `${result.message || '已重新检测；权限按需开启，不用的功能无需授权。'}${identity}`
         : '查询未完成，状态暂时未知。请重新检测；这不代表权限被拒绝。';
@@ -1300,6 +1304,7 @@
   }
 
   function currentDuration() {
+    if(['saving','save-failed'].includes(recordingStatus))return recordingStopDurationMs;
     return Domain.calculateRecordingDuration({
       startedAt: recordingStartedAt,
       status: recordingStatus,
@@ -1494,6 +1499,7 @@
     if (result && result.transcript) recordingTranscript = result.transcript;
     else recordingTranscript=currentRecordingText();
     transcriptionStatus = result && result.ok ? 'idle' : 'error';
+    recordingSpeechComplete=!!result?.ok;
     interimTranscript = '';
     updateRecordingUi();
     return result;
@@ -1556,7 +1562,7 @@
     return { ok: true, recordingId:recordingDraftId||'', status: recordingStarting ? 'starting' : recordingStatus,
       time: formatClock(recordingStatus!=='idle' ? recordingStopDurationMs || currentDuration() : 0),
       feedback: recordingCaptureIssue || (recordingStatus==='idle' ? '原音频与转写先保存，整理失败可重试。' : currentRecordingFeedback()),
-      transcript:currentRecordingText(),markers:recordingMarkers.length,autoOrganize,saveFailed:!!pendingRecording,
+      transcript:currentRecordingText(),transcriptionProvider:transcriptionConfig.configured?'Qwen 实时转写':'系统转写（未配置 Qwen）',microphone:mediaStream?.getAudioTracks()[0]?.label||'',markers:recordingMarkers.length,autoOrganize,saveFailed:!!pendingRecording,
       theme: document.documentElement.dataset.theme };
   }
 
@@ -1568,6 +1574,32 @@
       selectedRecordingId=id;await setMode(true);await setActiveTab('recordings');renderRecordings();return {ok:true};
     },
     async command(action,expectedRecordingId) {
+      if(action==='timed-start'){
+        const p=expectedRecordingId;
+        if(!p||!Number.isInteger(p.seconds)||p.seconds<1||p.seconds>86400)return {ok:false,error:'invalid_duration'};
+        if(recordingStarting||recordingStatus!=='idle')return {ok:false,error:'recording_busy'};
+        await startRecording('memo');
+        if(recordingStatus!=='recording')return {ok:false,error:'start_failed'};
+        timedRecording={id:recordingDraftId,deadline:Date.now()+p.seconds*1000};
+        return {...recordingSnapshot(),deadline:timedRecording.deadline};
+      }
+      if(action==='assistant-status'){
+        const saved=recordings.find(r=>r.id===expectedRecordingId&&!r.isDraft);
+        if(saved)return {ok:true,finished:true,recordingId:saved.id,savedText:saved.voice?.rawTranscript||saved.transcript||'',transcriptionComplete:assistantSpeechResults.get(saved.id)!==false};
+        if(recordingDraftId!==expectedRecordingId)return {ok:false,error:'recording_changed'};
+        return recordingSnapshot();
+      }
+      if(action==='assistant-stop'||action==='assistant-retry'){
+        if(!expectedRecordingId||recordingDraftId!==expectedRecordingId)return {ok:false,error:'recording_changed'};
+        if(action==='assistant-stop')stopRecording();
+        else if(pendingRecording&&recordingStatus==='save-failed')await finalizeRecording(pendingRecording.blob,pendingRecording.durationMs);
+        return recordingSnapshot();
+      }
+      if(action==='assistant-start'||action==='assistant-record'){
+        if(recordingStarting||recordingStatus!=='idle')return {ok:false,error:'recording_busy'};
+        await startRecording(action==='assistant-start'?'planner':'memo');
+        return {...recordingSnapshot(),ok:recordingStatus==='recording',recordingId:recordingDraftId};
+      }
       if(action==='timer-stop'){
         if(!expectedRecordingId||recordingDraftId!==expectedRecordingId||!['recording','paused'].includes(recordingStatus))return {ok:false,error:'recording_changed'};
         stopRecording();return recordingSnapshot();
@@ -1666,6 +1698,7 @@
 
   async function finalizeRecording(blob, durationMs) {
     pendingRecording ||= {blob,durationMs,saved:null};
+    recordingStopDurationMs=durationMs;
     recordingStatus = 'saving';
     updateRecordingUi();
     if (!blob || blob.size === 0) {
@@ -1680,7 +1713,7 @@
         metadata:{id:activeRecordingDraft()?.id,createdAt:recordingStartedAt,durationMs,voice:{rawTranscript:recordingTranscript,markers:recordingMarkers}},
       });
     } catch (error) {
-      saved = null;
+      saved = {ok:false,error:'write_failed'};
     }
     if (saved && saved.ok) {
       pendingRecording.saved=saved;
@@ -1703,6 +1736,8 @@
         recording.isDraft=true;recordingStatus='save-failed';recordingCaptureIssue='音频已写入，但记录索引保存失败。请重试保存；不要退出。';updateRecordingUi();renderRecordings();return;
       }
       recordingDraftId = '';
+      assistantSpeechResults.set(recording.id,recordingSpeechComplete);
+      if(assistantSpeechResults.size>100)assistantSpeechResults.delete(assistantSpeechResults.keys().next().value);
       pendingRecording=null;
       if(recording.quickCapture)captureVoice(recording);
       renderRecordings();
@@ -1714,7 +1749,9 @@
         liveTranscript.hidden = false;
       }
     } else {
-      recordingStatus='save-failed';recordingCaptureIssue='音频未能写入本机，当前音频与转写仍在内存中。请重试保存，不要退出。';updateRecordingUi();renderRecordingDetail();return;
+      recordingStatus='save-failed';
+      const reason=({audio_too_large:'音频超过单文件大小限制',empty_audio:'未获得有效音频',forbidden:'录音保存请求未通过校验',write_failed:'本机文件写入失败'})[saved?.error]||'音频未能保存';
+      recordingCaptureIssue=reason+'。录音已停止，原音频与转写仍在内存中。重试只保存，不会重新录音；请勿退出。';updateRecordingUi();renderRecordingDetail();return;
     }
     recordingStatus = 'idle';
     recordingStartedAt = 0;
@@ -1730,6 +1767,7 @@
   async function startRecording(purpose='memo') {
     if (recordingStarting || recordingStatus !== 'idle' || !navigator.mediaDevices || !window.MediaRecorder) return;
     recordingStarting = true;
+    recordingSpeechComplete=false;
     recordingPurpose=purpose==='planner'?'planner':'memo';
     updateRecordingUi();
     if (liveTranscript) {
@@ -1746,8 +1784,9 @@
         }
         return;
       }
+      const microphone=localStorage.getItem('handy-microphone-v1');
       mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true,...(microphone?{deviceId:{exact:microphone}}:{}) },
         video: false,
       });
       const audioTrack = mediaStream.getAudioTracks()[0];
@@ -1767,6 +1806,7 @@
       const mimeType = chooseRecordingMimeType();
       mediaRecorder = new MediaRecorder(mediaStream, mimeType ? { mimeType } : undefined);
       audioChunks = [];
+      recordingBytes=0;
       recordingMarkers=[];
       recordingTranscript = '';
       interimTranscript = '';
@@ -1776,7 +1816,8 @@
       recordingStopDurationMs = 0;
       pausedTotalMs = 0;
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data && event.data.size) audioChunks.push(event.data);
+        if (event.data && event.data.size){audioChunks.push(event.data);recordingBytes+=event.data.size;}
+        if(recordingStatus==='recording'&&recordingBytes>180*1024*1024){recordingCaptureIssue='达到单段录音大小上限，已结束本次录音，不会自动开始下一段。';stopRecording();}
       };
       mediaRecorder.onerror = () => {
         recordingCaptureIssue = '录音中断 · 请重新开始';
@@ -1804,7 +1845,7 @@
         startSpeechRecognition();
       }
       clearInterval(recordingTimer);
-      recordingTimer = setInterval(updateRecordingUi, 500);
+      recordingTimer = setInterval(()=>{if(timedRecording?.id===recordingDraftId&&Date.now()>=timedRecording.deadline)stopRecording();updateRecordingUi();}, 500);
       updateRecordingUi();
     } catch (error) {
       stopMediaTracks();
@@ -1843,6 +1884,7 @@
   function stopRecording() {
     if (!mediaRecorder || !['recording', 'paused'].includes(recordingStatus)) return;
     recordingStopDurationMs = currentDuration();
+    timedRecording=null;
     recordingStatus = 'saving';
     stopSpeechRecognition(true);
     transcriptionFinishPromise = transcriptionStartPromise
@@ -1853,6 +1895,7 @@
     updateRecordingUi();
     try {
       mediaRecorder.stop();
+      stopMediaTracks();
     } catch (error) {
       stopMediaTracks();
       awaitRecordingStopFailure();
@@ -2431,7 +2474,10 @@
       musicArtwork.appendChild(image);
     }
     if (musicTitle) musicTitle.textContent = status?.installed===false ? '汽水音乐' : status?.title || '汽水音乐';
-    if (musicStatus) musicStatus.textContent = status?.installed===false ? '尚未安装客户端' : musicSnapshot.detail || (status?.running ? (musicPlaying===null?'已连接 · 播放状态未提供':musicPlaying?'正在播放':'已暂停') : status?.installed ? '汽水尚未运行' : '需要本地客户端');
+    const clock=n=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;
+    if (musicStatus) musicStatus.textContent = status?.metadataAvailable
+      ? [status.artist,Number.isFinite(status.elapsed)&&Number.isFinite(status.duration)?`${clock(status.elapsed)} / ${clock(status.duration)}`:''].filter(Boolean).join(' · ')
+      : status?.installed===false ? '尚未安装客户端' : musicSnapshot.detail || '歌曲信息暂不可用';
     })();
     try { await musicStatusPending; } finally { musicStatusPending=null; }
   }
@@ -2474,6 +2520,13 @@
   });
 
   renderMusicPlaybackState();
+
+  // Main cover updates only while actually visible. Floating views pull their
+  // own snapshots; main IPC deduplicates concurrent reads across both surfaces.
+  const musicVisibleTimer=setInterval(()=>{
+    if(!document.hidden&&homeMusic?.getClientRects().length)void refreshMusicStatus();
+  },1000);
+  window.addEventListener('beforeunload',()=>clearInterval(musicVisibleTimer),{once:true});
 
   // ============ 本机加密密钥库 ============
   const credentialService = document.getElementById('credential-service');

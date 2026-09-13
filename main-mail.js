@@ -119,12 +119,14 @@ function createMailService({ file, encryption, makeClient = options => new (requ
     return { ...s, providers: Object.entries(PROVIDERS).map(([id, p]) => ({ id, name: p.name, hint: p.hint })),
       accounts: (s.accounts || []).map(a => ({ ...a, busy: jobs.has(a.id), ...(caches.get(a.id) || { items: [], refreshedAt: null, error: '' }) })) };
   }
-  async function withClient(key, account, work) {
+  async function withClient(key, account, work, signal) {
+    if(signal?.aborted)return fail('cancelled');
     if (disposed) return fail('cancelled');
     if (jobs.has(key)) return fail('busy');
     let client, timer, rejectAbort;
     const job = { cancel() { rejectAbort?.(Error('cancelled')); try { client?.close(); } catch {} } };
     jobs.set(key, job);
+    signal?.addEventListener('abort',job.cancel,{once:true});
     try {
       client = makeClient(clientOptions(account));
       client.on('error', () => {}); // Errors are sanitized below, never logged with credentials/server text.
@@ -138,7 +140,7 @@ function createMailService({ file, encryption, makeClient = options => new (requ
       })(), aborted ]);
       return { ok: true, ...result };
     } catch (e) { return fail(errorCode(e)); }
-    finally { clearTimeout(timer); try { client?.close(); } catch {} if (jobs.get(key) === job) jobs.delete(key); }
+    finally { clearTimeout(timer);signal?.removeEventListener('abort',job.cancel); try { client?.close(); } catch {} if (jobs.get(key) === job) jobs.delete(key); }
   }
   async function save(input) {
     if (input?.confirmed !== true) return fail('confirmation_required');
@@ -157,20 +159,29 @@ function createMailService({ file, encryption, makeClient = options => new (requ
       return saved.ok ? snapshot() : saved;
     } catch (e) { return fail(e.message); }
   }
-  async function refresh(id) {
+  async function refresh(id, query, signal) {
+    let search;
+    try{search=query?require('./renderer/assistant-capabilities').validate({...query,kind:'action',action:'search_mail'}):null;}catch{return fail('invalid_input');}
     let a; try { a = store.account(id); } catch (e) { return fail(e.message); }
     if (!a) return fail('not_found');
     const r = await withClient(id, a, async client => {
       const count = client.mailbox.exists, validity = String(client.mailbox.uidValidity);
-      const found = count ? await client.search({ seen: false, seq: `${Math.max(1, count - 4999)}:*` }, { uid: true }) : [];
+      const criteria={seq:`${Math.max(1,count-4999)}:*`};
+      if(!search||search.unread)criteria.seen=false;
+      if(search?.query)criteria.or=[{subject:search.query},{from:search.query}];
+      if(search?.from)criteria.from=search.from;
+      if(search?.since)criteria.since=new Date(search.since+'T12:00:00');
+      if(search?.before)criteria.before=new Date(search.before+'T12:00:00');
+      const found = count ? await client.search(criteria, { uid: true }) : [];
       const uids = (found || []).slice(-50).reverse(), items = [];
       if (uids.length) for await (const m of client.fetch(uids, { envelope: true, internalDate: true, bodyStructure: true }, { uid: true })) {
         const env = m.envelope || {}, from = (env.from || []).slice(0, 4).map(v => cut(v.name || v.address, 150)).join('、');
         const date = new Date(m.internalDate || env.date || 0).getTime();
         items.push({ id: `${id}:${validity}:${m.uid}`, uid: m.uid, validity, subject: cut(env.subject, 500) || '（无主题）', from: from || '（未知发件人）', date: Number.isFinite(date) ? date : 0, part: plainPart(m.bodyStructure) });
       }
-      return { items: items.sort((a, b) => b.uid - a.uid), scanned: Math.min(count, 5000), matched: (found || []).length, refreshedAt: Date.now(), error: '' };
-    });
+      return { items: items.sort((a, b) => b.uid - a.uid), scanned: Math.min(count, 5000), matched: (found || []).length, refreshedAt: Date.now(), error: '', search:search||null };
+    },signal);
+    if(signal?.aborted)return fail('cancelled');
     try { const current = store.account(id); if (!current || current.email !== a.email || current.secret !== a.secret || disposed) return fail('cancelled'); }
     catch (e) { return fail(e.message); }
     if (r.error !== 'busy' && r.error !== 'cancelled') caches.set(id, r.ok ? r : { ...(caches.get(id) || { items: [], refreshedAt: null }), error: r.error });
@@ -195,7 +206,7 @@ function createMailService({ file, encryption, makeClient = options => new (requ
     try { const r = store.remove(input.id, input.revision); if (r.ok) { jobs.get(input.id)?.cancel(); caches.delete(input.id); } return r.ok ? snapshot() : r; }
     catch (e) { return fail(e.message); }
   }
-  return { snapshot, save, refresh, read, remove,
+  return { snapshot, save, refresh, search:(id,query,signal)=>refresh(id,query,signal), read, remove,
     cancel() { for (const job of jobs.values()) job.cancel(); return { ok: true }; },
     url(provider, help) { return Object.hasOwn(PROVIDERS, provider) ? PROVIDERS[provider][help ? 'help' : 'web'] : undefined; },
     dispose() { disposed = true; for (const job of jobs.values()) job.cancel(); caches.clear(); },

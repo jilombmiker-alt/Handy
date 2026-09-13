@@ -10,7 +10,7 @@
     if(kind==='music')return window.PanelMusicFloat.mount(root,initial,api);
     if(kind==='pomodoro'){
       document.body.classList.add('timer-floating');document.title='Handy · 计时';
-      return window.SimpleTimer.mount(root,{get:api.timerGet,command:api.timerCommand,layout:expanded=>api.request({action:'timer-layout',expanded})});
+      return window.SimpleTimer.mount(root,{get:api.timerGet,command:api.timerCommand,layout:expanded=>api.request({action:'timer-layout',expanded})},{floating:true});
     }
     let state=initial,disposed=false,busy=false,loading=false,pending=Promise.resolve(),editing=null,dirty=false,revision=0,signature='';
     root.replaceChildren();

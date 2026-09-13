@@ -1,0 +1,45 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {app,BrowserWindow,ipcMain}=require('electron');
+process.env.PANEL_TEST_MODE='1';process.env.PANEL_TEST_USER_DATA_PATH=fs.mkdtempSync(path.join(os.tmpdir(),'handy-local-first-'));
+app.on('browser-window-created',(_e,w)=>{w.show=()=>{};w.showInactive=()=>{};w.focus=()=>{};w.webContents.setBackgroundThrottling(false);});
+const main=require('../main'),{createAssistantEntry}=require('../ai/assistant-entry');
+let calls=0,music=[],answer={kind:'reply',text:'尚未接入该外部操作。'},lastContext;
+main.assistant.setService(createAssistantEntry({request:async p=>{calls++;lastContext=JSON.parse(p.prompt.user);return {content:answer};}}));
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+async function until(fn){for(let i=0;i<200;i++){const value=await fn();if(value)return value;await delay(30);}throw Error('timeout');}
+async function run(){
+ await app.whenReady();const host=await until(()=>BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().endsWith('/renderer/index.html')&&!w.webContents.isLoadingMainFrame()));
+ const js=s=>host.webContents.executeJavaScript(s);await until(()=>js('!!ToolLauncher.entry'));
+ ipcMain.removeHandler('music:control');ipcMain.handle('music:control',(_e,command)=>{music.push(command);return command==='pause'?{ok:false,error:'accessibility_permission_required'}:{ok:true};});
+ ipcMain.removeHandler('music:status');ipcMain.handle('music:status',()=>({ok:true,installed:true,running:false}));
+ ipcMain.removeHandler('desktop:action');ipcMain.handle('desktop:action',()=>({ok:false,error:'song_not_found'}));
+ await js(`window.routeReceipts=[];document.addEventListener('notch:task-results',e=>{routeReceipts=e.detail});void 0;`);
+ const submit=(text,mode='command')=>js(`(async()=>{const e=document.getElementById('entry-input');e.value=${JSON.stringify(text)};e.dispatchEvent(new Event('input'));await ToolLauncher.entry.submit('${mode}');})()`);
+ const reset=()=>js('ToolLauncher.entry.newConversation()');
+ const enable=on=>js(`(async()=>{const r=await notchAPI.plannerGet();await notchAPI.plannerCommand({action:'settings',aiEnabled:${on},revision:r.state.revision,requestId:crypto.randomUUID()});await ToolLauncher.entry.refreshSettings();})()`);
+ await enable(false);
+ const before=await js('Notebook.references().notes.length');const started=Date.now();
+ await submit('计时十五分钟，然后新建一个笔记');
+ assert.equal((await js('notchAPI.timerGet()')).active.plannedMs,900000);
+ assert.equal(await js('Notebook.references().notes.length'),before+1);assert.equal(calls,0);
+ console.log('Isolated local timer + note elapsed ms:',Date.now()-started);
+ assert.deepEqual(await js('routeReceipts.map(r=>r.ok)'),[true,true]);
+ await reset();await submit('打开汽水音乐');assert.deepEqual(music,['open']);assert.equal(calls,0);
+ await reset();await submit('暂停音乐，然后打开剪贴板');assert.equal(calls,0);assert.equal((await js('routeReceipts'))[0].ok,false);
+ await reset();const count=music.length;
+ await submit('记一下，打开汽水音乐，然后新建一个笔记');assert.equal(music.length,count);assert.equal(calls,0);
+ assert.ok(await js(`QuickRecords.snapshot().state.records.some(r=>r.content==='打开汽水音乐，然后新建一个笔记')`));
+ await reset();await submit('打开汽水音乐，然后在外部网站订票');assert.equal(music.length,count);assert.equal(calls,0,'AI off must not partially execute');
+ await enable(true);await reset();
+ answer={kind:'actions',actions:[{kind:'action',action:'play_music',query:'测试歌曲'},{kind:'action',action:'new_note',format:'plain'}]};
+ await submit('我想边听那首测试歌曲边写些思路，帮我准备好');assert.equal(calls,1);
+ assert.equal(lastContext.executionPolicy.computerUse.available,false);
+ assert.deepEqual(await js('routeReceipts.map(r=>r.ok)'),[false,true]);
+ assert.match(await js('routeReceipts[0].text'),/没有可确认的匹配歌曲/);
+ const after=music.length;await reset();
+ answer={kind:'actions',actions:[{kind:'action',action:'open_music'},{kind:'action',action:'computer_use'}]};
+ await submit('执行没有接入的屏幕操作');assert.equal(calls,2);assert.equal(music.length,after,'invalid whole plan cannot start first step');
+ assert.ok(BrowserWindow.getAllWindows().every(w=>!w.isVisible()));
+ console.log('S61 PASS: local commands + combinations work with AI disabled and zero model calls; storage/partial requests do not execute; one AI plan uses fixed adapters; unavailable Computer Use and permission failure stay false; invalid plans have no side effects. Isolated data, mocked model/music, no live recording.');
+}
+run().then(()=>app.exit(0)).catch(e=>{console.error(e);app.exit(1);});

@@ -1,5 +1,10 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const root=path.join(__dirname,'..'),pkg=require('../package.json');
+test('0.1 test baseline keeps package and lock versions aligned',()=>{
+  const lock=require('../package-lock.json');
+  assert.equal(pkg.version,'0.1.0');assert.equal(pkg.releaseChannel,'test');
+  assert.equal(lock.version,pkg.version);assert.equal(lock.packages[''].version,pkg.version);
+});
 test('display rename preserves bundle, npm and historical data identity',()=>{
   assert.equal(pkg.build.productName,'Handy');assert.equal(pkg.build.appId,'com.dynamicpanel.app');assert.equal(pkg.name,'to-do-panel');
   assert.equal(pkg.build.mac.extendInfo.CFBundleDisplayName,'Handy');

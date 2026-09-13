@@ -1,5 +1,7 @@
 (() => {
   'use strict';
+  const sharedStyle=document.createElement('link');sharedStyle.rel='stylesheet';sharedStyle.href='unified-ui.css';document.body.append(sharedStyle);
+  const brand=document.createElement('span');brand.className='float-brand';brand.textContent='Handy';document.querySelector('.float-bar').prepend(brand);
   const api = window.floatingAPI, root = document.getElementById('floating-root');
   let editor = null, identity = null, closing = false, pendingReview=false,pendingRecord='';
   const theme = (value) => { document.documentElement.dataset.theme = value === 'obsidian' ? value : 'white'; };
@@ -12,12 +14,23 @@
     identity = await api.request({ action:'identity' });
     const pin=document.createElement('button');pin.id='float-pin';pin.type='button';
     let pinned=(await api.request({action:'pin-state'})).pinned!==false;
-    const updatePin=()=>{pin.textContent=pinned?'取消置顶':'置顶';pin.setAttribute('aria-pressed',String(pinned));pin.title='仅控制这个工具小窗的持续置顶';};updatePin();
+    const updatePin=()=>{const label=pinned?'取消置顶':'置顶';pin.textContent=label;pin.setAttribute('aria-label',label);pin.setAttribute('aria-pressed',String(pinned));pin.title='仅控制这个工具小窗的持续置顶';
+      pin.innerHTML='<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 3h8l-1 7 3 3v2H6v-2l3-3-1-7ZM12 15v6"/></svg>';
+    };updatePin();
     pin.onclick=async()=>{pin.disabled=true;try{const r=await api.request({action:'pin',pinned:!pinned});if(r.ok)pinned=r.pinned;updatePin();}finally{pin.disabled=false;}};
     document.getElementById('float-dock').before(pin);
     const result = await api.request({ action:'get' });
     if (!result?.ok) { root.textContent = '读取失败，请收回后重试。未修改已有内容。'; return; }
     theme(result.theme);
+    const name=identity.kind==='note'?(result.note.meeting?'会议整理':'笔记'):identity.kind==='quick'?'随手记':identity.kind==='recorder'?'录音':window.PanelModuleCatalog?.[identity.id]?.label||'工具';
+    document.title='Handy · '+(result.note?.title||name);
+    document.getElementById('float-handle').textContent=name;
+    document.getElementById('float-dock').textContent='关闭';
+    document.getElementById('float-dock').title='保存内容并关闭这个窗口';
+    if(identity.kind==='module'&&identity.id==='pomodoro'){
+      document.getElementById('float-dock').textContent='隐藏';
+      document.getElementById('float-dock').title='隐藏计时小窗，计时继续；从菜单栏重新打开';
+    }
     if(identity.kind==='module'){
       if(identity.id==='music'){
         document.title='Handy · 音乐';
@@ -81,6 +94,11 @@
     root.querySelector('.float-record-feedback').textContent = value.feedback || '收回小窗不会结束录音。仅点击开始时使用麦克风。';
   }
   api.onChanged((payload) => {
+    if(payload.kind==='note'&&identity?.kind==='note'&&payload.id===identity.id&&!payload.linksChanged&&editor){
+      // Own save broadcasts arrive before its ACK. Refresh only an idle, unchanged editor.
+      const target=editor;
+      setTimeout(async()=>{try{if(editor!==target||target.saving||target.saved!==target.dirty||target.generating)return;const r=await api.request({action:'get'});if(editor!==target||target.saving||target.saved!==target.dirty||!r?.ok)return;if(target.revision!==window.NotebookModel.version(r.note)){target.note=r.note;target.revision=window.NotebookModel.version(r.note);target.render();}}catch{}},80);
+    }
     if(payload.kind==='note'&&payload.linksChanged)editor?.refreshLinks?.();
     if (payload.kind === 'theme') theme(payload.theme);
     if (identity?.kind === 'recorder' && payload.kind === 'recorder') renderRecorder(payload);

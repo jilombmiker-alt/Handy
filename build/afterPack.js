@@ -1,13 +1,13 @@
 // electron-builder afterPack hook
 // Signing is owned by this hook; never silently fall back from Developer ID to ad-hoc.
-const { selectSigningIdentity } = require('./signing-policy');
+const { selectSigningIdentity, signingEnvironment } = require('./signing-policy');
 const { execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
 exports.default = async function afterPack(context) {
   if (context.electronPlatformName !== 'darwin') return;
-  const signing = selectSigningIdentity();
+  const signing = selectSigningIdentity(signingEnvironment());
 
   const appPath = path.join(
     context.appOutDir,
@@ -23,12 +23,14 @@ exports.default = async function afterPack(context) {
   if (!fs.existsSync(clipboardAddon)) throw new Error('打包缺少原生剪贴板组件，已停止签名和分发。');
   const musicAddon = path.join(appPath, 'Contents', 'Resources', 'app', 'native', '.build', 'music-bridge.node');
   if (!fs.existsSync(musicAddon)) throw new Error('打包缺少原生音乐组件，已停止签名和分发。');
+  const desktopAddon = path.join(appPath, 'Contents', 'Resources', 'app', 'native', '.build', 'desktop-bridge.node');
+  if (!fs.existsSync(desktopAddon)) throw new Error('打包缺少原生应用清单组件，已停止签名和分发。');
 
   if (!fs.existsSync(electronExecutablePath)) {
     throw new Error(`找不到 Electron 主程序：${electronExecutablePath}`);
   }
 
-  console.log(`  • ${signing.adhoc ? '临时 ad-hoc' : 'Developer ID'} 签名 ${appPath}`);
+  console.log(`  • ${signing.adhoc ? '临时 ad-hoc' : signing.local ? '本机固定证书（非 Apple 认证）' : 'Developer ID'} 签名 ${appPath}`);
 
   // 依次签：所有 dylib → Framework 内 Helpers → Framework binary → Helper apps → Frameworks → 主 bundle
   const entitlementsPath = path.join(projectRoot, 'build', 'entitlements.mac.plist');
@@ -37,7 +39,7 @@ exports.default = async function afterPack(context) {
   const signFailures = [];
   const cs = (file, executable = false) => {
     try {
-      const args = ['--force', '--sign', signing.identity, signing.adhoc ? '--timestamp=none' : '--timestamp'];
+      const args = ['--force', '--sign', signing.identity, signing.adhoc || signing.local ? '--timestamp=none' : '--timestamp'];
       if (executable) args.push('--options', 'runtime', '--entitlements', entitlementsPath);
       args.push(file);
       execFileSync('codesign', args, { stdio: 'pipe' });

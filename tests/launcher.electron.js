@@ -20,7 +20,7 @@ async function run(){
   win.show();win.focus();
   await js('ToolLauncher.open(null)');await delay(450);
   const b=win.getBounds(),area=screen.getDisplayMatching(b).workArea;
-  assert.equal(b.y+b.height,area.y+area.height-12);
+  assert.ok(Math.abs(b.y+b.height/2-(area.y+area.height/2))<=1);
   assert.equal(await js('document.querySelectorAll(".launcher-tile").length'),8);
   const screenshot=async name=>{await js('dismissStatusToast(false)');await delay(220);fs.writeFileSync(path.join(__dirname,'../docs/screenshots',name),(await win.webContents.capturePage()).toPNG());};
   await screenshot('stage39-launcher.png');

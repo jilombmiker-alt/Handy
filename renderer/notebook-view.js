@@ -84,15 +84,19 @@
       this.handleCleanup?.();
       const n = this.note, m = n.meeting;
       this.root.classList.add('nb-editor');
-      this.root.innerHTML = `<div class="nb-toolbar"><span>${m ? '会议笔记' : this.api.quick ? '随手记' : '笔记'}</span><div>
+      this.root.innerHTML = `<div class="nb-toolbar"><span>${m ? '会议整理' : this.api.quick ? '随手记' : '笔记'}</span><div>
         ${this.api.quick ? '<button type="button" data-nb="archive">存为新笔记</button>' : ''}
         ${this.api.remove ? '<button type="button" data-nb="delete">删除</button>' : ''}
         <button type="button" data-nb="save">立即保存</button></div></div>
         ${this.api.quick ? '' : this.field('标题', n.title, 'title', { max: 80, placeholder: '未命名笔记' })}
         ${m ? `<nav class="nb-stages" aria-label="会议阶段">${[['prep','会前准备'],['live','会中记录'],['review','会后核对']].map(([stage,label]) => `<button type="button" data-stage="${stage}" aria-pressed="${m.stage === stage}">${label}</button>`).join('')}</nav>` : ''}
-        <div class="nb-body">${m ? this.meetingBody(m) : this.field(this.api.quick ? '随时写下，不必先起标题' : '正文', n.content, 'content', { multi: true, max: 60000, placeholder: '从这里开始写…' })}</div>
+        <div class="nb-body">${m ? this.lightMeetingBody(m) : this.field(this.api.quick ? '随时写下，不必先起标题' : '正文', n.content, 'content', { multi: true, max: 60000, placeholder: '从这里开始写…' })}</div>
         <div class="nb-footer"><span class="nb-status" role="status" aria-live="polite" tabindex="-1">${m?.confirmedAt ? '会议结果已核对' : '本机自动保存'}</span></div>`;
       this.root.oninput = (event) => this.input(event);
+      if(m&&m.stage!=='prep'){
+        const actions=this.root.querySelector('.nb-body>.nb-ai-actions');
+        if(actions)this.root.querySelector('.nb-footer').before(actions);
+      }
       if(this.api.linkedResources){
         const section=document.createElement('details');section.className='nb-linked';section.open=true;section.hidden=true;section.innerHTML='<summary>关联资料</summary><div class="nb-linked-list"></div>';
         this.root.querySelector('.nb-footer').before(section);this.linksSignature=null;void this.refreshLinks();
@@ -103,6 +107,32 @@
       if (this.proposed && m?.stage === 'prep') this.renderProposal();
       if (this.generating) this.showGenerating();
       if (this.importing) { const upload = this.root.querySelector('[data-nb="upload"]'); if (upload) upload.disabled = true; }
+    }
+    lightMeetingBody(m){
+      const raw=this.field('随时记录',m.freeText,'meeting.freeText',{multi:true,max:60000,placeholder:'想到哪里记到哪里。写下 1、2、3 点也可以，不必先整理。'});
+      const older=m.topics.length?`<details class="nb-optional"><summary>之前按议题保存的记录（${m.topics.length}）</summary>${this.topics(m,false)}</details>`:'';
+      if(m.stage==='prep')return `<p class="nb-help">可选：大概理一下方向，空着也能开始记录。</p>
+        ${this.field('这次想聊什么（选填）',m.objective,'meeting.objective',{multi:true,max:2000,placeholder:'一句话，或几个关键词'})}
+        <details class="nb-optional"><summary>补充背景或材料</summary>${this.field('背景',m.background,'meeting.background',{multi:true})}<div class="nb-materials"><button type="button" data-nb="references">选择笔记</button><button type="button" data-nb="upload">导入 Word / PDF</button></div><div class="nb-reference-picker" hidden></div><p class="nb-import-status" role="status">${esc(this.materialStatus||'')}</p>${this.files.map(f=>`<p>${esc(f.name)}</p>`).join('')}</details>
+        <div class="nb-ai-actions"><button type="button" data-nb="generate">AI 理一下方向</button><button type="button" data-nb="cancel" hidden>取消整理</button><button type="button" class="nb-primary" data-stage="live">直接开始记录</button></div><div class="nb-proposal" hidden></div>${m.freeText?`<details><summary>已有记录</summary>${raw}</details>`:''}`;
+      if(m.stage==='live')return `${raw}${older}<div class="nb-ai-actions"><button type="button" class="nb-primary" data-nb="finish-recording" title="记录完了，AI 整理后再核对">AI 整理</button><button type="button" data-stage="review" title="直接核对原文，不调用 AI">核对原文</button></div>`;
+      return `<p class="nb-help">先核对整理稿；原始记录一直保留，不需要补齐表格。</p>
+        ${m.summary?this.field('整理稿（可修改）',m.summary,'meeting.summary',{multi:true,max:16000}):'<p class="nb-help">还没有整理稿，可以直接确认原文，或请 AI 整理。</p>'}
+        <details class="nb-original" ${m.summary?'':'open'}><summary>原始记录</summary>${raw}${older}</details>
+        <div class="nb-ai-actions"><button type="button" class="nb-primary" data-nb="confirm-light">确认并保存</button><button type="button" data-nb="summarize">${m.summary?'重新整理':'AI 整理记录'}</button><button type="button" data-nb="cancel" ${this.generating?'':'hidden'}>取消整理</button><button type="button" data-stage="live">继续记</button></div>`;
+    }
+    async summarize(){
+      if(this.generating)return;await this.flush();const m=this.note.meeting;
+      const original=[m.freeText,...m.topics.map(t=>[t.title,t.focus,t.notes].filter(Boolean).join('\n'))].filter(Boolean).join('\n\n');
+      if(!original.trim()){this.status('先写下一点内容，再整理。',true);return;}
+      if(original.length>30000){this.status('本次记录超过 30000 字，请先分段整理；原文已保存。',true);return;}
+      this.generating=true;const serial=this.dirty;this.status('正在整理记录；原文已保存。');
+      const controls=this.root.querySelectorAll('[data-nb="summarize"],[data-nb="finish-recording"],[data-nb="confirm-light"]');controls.forEach(b=>b.disabled=true);
+      const cancel=this.root.querySelector('[data-nb="cancel"]');if(cancel)cancel.hidden=false;
+      try{const result=await this.api.prepare({mode:'review',text:original});if(this.destroyed)return;if(!result?.ok){this.status(errors[result?.error]||'整理失败，原记录保留，可稍后重试。',true);return;}
+        if(serial!==this.dirty){this.status('你已继续修改记录，本次整理稿未覆盖；完成后可重新整理。',true);return;}
+        m.summary=result.summary;m.summarySource=original;m.confirmedAt=0;this.changed();await this.flush();this.render();this.status('整理稿已生成，请核对；原文保留。');
+      }catch{this.status('整理失败，原记录已保留。',true);}finally{this.generating=false;if(!this.destroyed){this.root.querySelectorAll('[data-nb="summarize"],[data-nb="finish-recording"],[data-nb="confirm-light"]').forEach(b=>b.disabled=false);const b=this.root.querySelector('[data-nb="cancel"]');if(b)b.hidden=true;}}
     }
     meetingBody(m) {
       if (m.stage === 'prep') return `<p class="nb-intro">会前 5 分钟，先确定今天值得讨论什么。</p>
@@ -149,7 +179,7 @@
         if (el.dataset.proposalTitle !== undefined && this.proposed.topics[Number(el.dataset.proposalTitle)]) this.proposed.topics[Number(el.dataset.proposalTitle)].title = el.value;
         if (el.dataset.proposalFocus !== undefined && this.proposed.topics[Number(el.dataset.proposalFocus)]) this.proposed.topics[Number(el.dataset.proposalFocus)].focus = el.value;
       }
-      if (!key || !/^(title|content|meeting\.(objective|background|questions|freeText|noTasks|topics\.\d+\.(title|focus|notes|status)|tasks\.\d+\.(text|owner|due)))$/.test(key)) return;
+      if (!key || !/^(title|content|meeting\.(objective|background|questions|freeText|summary|noTasks|topics\.\d+\.(title|focus|notes|status)|tasks\.\d+\.(text|owner|due)))$/.test(key)) return;
       const parts = key.split('.'); let object = this.note;
       for (const part of parts.slice(0,-1)) object = object[part];
       object[parts.at(-1)] = el.type === 'checkbox' ? el.checked : el.value;
@@ -169,6 +199,9 @@
       if (action === 'settings') return this.api.settings();
       if (action === 'cancel') return this.api.cancel();
       if (action === 'generate') return this.generate();
+      if(action==='finish-recording'){await this.flush();m.stage='review';this.changed();await this.flush();this.render();return this.summarize();}
+      if(action==='summarize')return this.summarize();
+      if(action==='confirm-light'){m.confirmedAt=Date.now();this.dirty++;await this.flush();this.status('记录已核对并保存。');return;}
       if (action === 'references') {
         const result = await this.api.references(); this.references = result.notes || [];
         const picker = this.root.querySelector('.nb-reference-picker'); picker.hidden = false;
@@ -252,17 +285,11 @@
     renderProposal() {
       const box = this.root.querySelector('.nb-proposal'); if (!box) return;
       const p = this.proposed; box.hidden = false;
-      box.innerHTML = `<h3>讨论方向草案</h3><p class="nb-help">可直接修改。采用后更新目标和待确认问题，并追加议题；不会删掉已有记录。</p>
-        <label class="nb-field"><span>会议目标</span><textarea data-proposal="objective" maxlength="1000">${esc(p.objective)}</textarea></label>
-        ${p.topics.map((t,i) => `<label class="nb-field"><span>议题 ${i+1}</span><input data-proposal-title="${i}" maxlength="300" value="${esc(t.title)}"></label><label class="nb-field"><span>议题 ${i+1} 的讨论重点</span><textarea data-proposal-focus="${i}" maxlength="1500">${esc(t.focus)}</textarea></label>`).join('')}
-        <label class="nb-field"><span>待确认问题</span><textarea data-proposal="questions" maxlength="4000">${esc(p.questions)}</textarea></label>
-        <button type="button" class="nb-primary" data-nb="adopt">采用方向并追加议题</button><button type="button" data-nb="discard">暂不采用</button>`;
+      box.innerHTML = `<h3>讨论方向 · 待核对</h3><div class="nb-preserve">${esc([p.objective,...p.topics.map((t,i)=>`${i+1}. ${t.title}\n${t.focus}`),p.questions].filter(Boolean).join('\n\n'))}</div>
+        <button type="button" class="nb-primary" data-nb="adopt">采用方向</button><button type="button" data-nb="discard">取消</button>`;
     }
     readProposal() {
-      const box = this.root.querySelector('.nb-proposal');
-      return M.proposal({ objective:box.querySelector('[data-proposal="objective"]').value,
-        topics:this.proposed.topics.map((_t,i) => ({ title:box.querySelector(`[data-proposal-title="${i}"]`).value,focus:box.querySelector(`[data-proposal-focus="${i}"]`).value })),
-        questions:box.querySelector('[data-proposal="questions"]').value });
+      return M.proposal(this.proposed);
     }
   }
   window.NotebookEditor = NotebookEditor;

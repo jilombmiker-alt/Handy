@@ -9,6 +9,11 @@ function subscribe(channel, handler) {
 
 contextBridge.exposeInMainWorld('notchAPI', {
   launcherLayout: mode => ipcRenderer.invoke('launcher:layout', mode),
+  launcherPosition: position => ipcRenderer.invoke('launcher:position', position),
+  assistantGenerate: input => ipcRenderer.invoke('assistant:generate',input),
+  assistantCancel: () => ipcRenderer.invoke('assistant:cancel'),
+  desktopAction: input => ipcRenderer.invoke('desktop:action',input),
+  onDesktopProgress: callback => {const fn=(_event,p)=>callback(p);ipcRenderer.on('desktop:progress',fn);return ()=>ipcRenderer.removeListener('desktop:progress',fn);},
   onLauncherOpen: cb => subscribe('launcher:open', (_e,payload) => cb(payload)),
   onLauncherChanged: cb => subscribe('launcher:changed', (_e,payload) => cb(payload)),
   mailGet: () => ipcRenderer.invoke('mail:get'),
@@ -77,6 +82,8 @@ contextBridge.exposeInMainWorld('notchAPI', {
   toolGroupsCommand: (command) => ipcRenderer.invoke('window-tools:command', command),
   focusWindow: (windowId) => ipcRenderer.invoke('windows:focus', windowId),
   saveRecording: (payload) => ipcRenderer.invoke('recordings:save', payload),
+  startTimedRecording: (payload) => ipcRenderer.invoke('recordings:timed-start', payload),
+  cancelTimedRecording: (requestId) => ipcRenderer.invoke('recordings:timed-cancel', requestId),
   recoverRecordings: () => ipcRenderer.invoke('recordings:recover'),
   plannerGet:()=>ipcRenderer.invoke('planner:get'),
   plannerLegacy:()=>ipcRenderer.invoke('planner:legacy'),

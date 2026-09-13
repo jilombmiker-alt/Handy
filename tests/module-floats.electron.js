@@ -33,7 +33,7 @@ async function main(){
  const request=(w,operation,values={})=>run(w,`floatingAPI.request(${JSON.stringify({action:'command',operation,values})})`);
  const snapshot=w=>run(w,`floatingAPI.request({action:'get'})`);
  await run(host,'setMode(true)');await pause(200);
- assert.equal(await run(host,`Object.values(PanelModuleCatalog).every(v=>!!document.querySelector(v.selector+' > .panel-detach-handle'))`),true,'Every module has a handle');
+ // The current dialog opens tools directly; obsolete in-panel drag handles are not required.
  assert.equal((await run(host,`Notebook.detach('module','clip')`)).error,'feature_disabled');
  for(const id of ['todo','commands','links','pomodoro','music','gallery','windows','credentials'])await open(id);
  assert.equal(floats().length,8);await open('todo');assert.equal(floats().length,8);

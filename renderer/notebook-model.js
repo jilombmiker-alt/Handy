@@ -12,6 +12,7 @@
       mode: value.mode === 'free' ? 'free' : 'topics',
       objective: text(value.objective, 2000), background: text(value.background),
       freeText: text(value.freeText, 60000), confirmedAt: Number(value.confirmedAt) || 0,
+      summary: text(value.summary,16000), summarySource: text(value.summarySource,60000),
       topics: (Array.isArray(value.topics) ? value.topics : []).slice(0, 40).map((t) => ({
         id: text(t.id || uid(), 100), title: text(t.title, 300), focus: text(t.focus, 2000),
         notes: text(t.notes, 12000), status: ['decided', 'pending', 'skipped'].includes(t.status) ? t.status : 'unchecked',
@@ -41,6 +42,7 @@
     return [`会议目标：${m.objective}`, m.background && `背景：${m.background}`,
       ...m.topics.map((t, i) => `${i + 1}. ${t.title}\n讨论重点：${t.focus}\n${t.notes}\n状态：${({ unchecked: '待核对', decided: '有结论', pending: '待定', skipped: '未讨论' })[t.status]}`),
       m.freeText && `自由记录\n${m.freeText}`, m.questions && `待确认\n${m.questions}`,
+      m.summary && `整理稿${m.confirmedAt?'（已核对）':'（待核对）'}\n${m.summary}`,
       ...m.tasks.map((t) => `后续事项：${t.text}｜${t.owner}｜${t.due}`)].filter(Boolean).join('\n\n');
   }
   function proposal(value) {

@@ -17,7 +17,9 @@
     const node=(tag,text,cls)=>{const el=document.createElement(tag);if(text)el.textContent=text;if(cls)el.className=cls;return el;};
     const section=node('section',null,'module-float music-float'),row=node('div',null,'music-float-row');
     const copy=node('div',null,'music-float-copy'),title=node('strong'),artist=node('span');
-    title.id='float-music-title';copy.append(title,artist);
+    const info=node('div',null,'music-float-info'),time=node('span',null,'music-float-time');
+    const progress=node('progress',null,'music-float-progress');progress.setAttribute('aria-label','歌曲播放进度');progress.hidden=true;
+    title.id='float-music-title';info.append(artist,time);copy.append(title,info,progress);
     const transport=node('div',null,'music-float-controls');transport.setAttribute('role','group');transport.setAttribute('aria-label','汽水音乐控制');
     for(const [operation,label] of [['previous','上一首'],['toggle','播放 / 暂停'],['next','下一首']]){
       const button=node('button');button.type='button';button.dataset.musicOperation=operation;button.setAttribute('aria-label',label);button.title=label;
@@ -59,11 +61,15 @@
       document.documentElement.dataset.theme=value.theme==='obsidian'?'obsidian':'white';
       title.textContent=value.installed===false?'汽水音乐':value.title||'汽水音乐';artist.textContent=value.installed===false?'尚未连接客户端':value.artist||'歌曲信息暂不可用';
       title.title=title.textContent;artist.title=artist.textContent;
+      const timed=value.metadataAvailable===true&&Number.isFinite(value.elapsed)&&Number.isFinite(value.duration)&&value.duration>0;
+      const clock=n=>`${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,'0')}`;
+      time.textContent=timed?`${clock(value.elapsed)} / ${clock(value.duration)}`:'';
+      progress.hidden=!timed;if(timed){progress.max=value.duration;progress.value=value.elapsed;progress.setAttribute('aria-valuetext',time.textContent);}
       const play=transport.querySelector('[data-music-operation="toggle"]');
       const playing=value.playing===true;play.setAttribute('aria-label',playing?'暂停':value.playing===false?'播放':'播放 / 暂停');
-      play.querySelector('path').setAttribute('d',playing?'M8 5v14M16 5v14':'m9 5 10 7-10 7V5Z');
-      play.querySelector('svg').setAttribute('fill',playing?'none':'currentColor');
-      if(!failed)message(value.detail||'播放状态暂不可用');
+      play.querySelector('path').setAttribute('d',playing?'M8 5v14M16 5v14':value.playing===false?'m9 5 10 7-10 7V5Z':paths.toggle);
+      play.querySelector('svg').setAttribute('fill',value.playing===false?'currentColor':'none');
+      if(!failed||value.error==='accessibility_permission_required')message(value.detail||'播放状态暂不可用',value.error==='accessibility_permission_required');
       syncLayout();syncDisabled();
     }
     function syncDisabled(){
@@ -93,7 +99,7 @@
     }
     const events=['pointerenter','pointerleave','pointermove','focusin','focusout','keydown'];
     events.forEach(name=>body.addEventListener(name,wake));window.addEventListener('blur',wake);
-    render(initial);wake();const timer=setInterval(()=>void refresh(),2500);
+    render(initial);wake();const timer=setInterval(()=>void refresh(),1000);
     return {async flush(){await pending;},destroy(){disposed=true;clearTimeout(idleTimer);clearInterval(timer);events.forEach(name=>body.removeEventListener(name,wake));window.removeEventListener('blur',wake);body.removeEventListener('keydown',escapeOptions);more.remove();body.classList.remove('music-floating','music-idle');}};
   }};
 })();

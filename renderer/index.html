@@ -604,7 +604,7 @@
                     <div><span class="tile-label">这台 Mac</span><strong>本机与唤出</strong></div>
                   </div>
                   <div class="settings-device-row">
-                    <div><span>唤出快捷键</span><strong id="settings-shortcut-value">左 Option + 左 Command</strong><small>左侧两键短按后松开；加按其他键不触发。可录制其他组合或功能键。</small><small id="panel-shortcut-health" role="status"></small></div>
+                    <div><span>唤出快捷键</span><strong id="settings-shortcut-value">左 Option + 左 Command</strong><small>短按听指令；长按 0.6 秒持续录音；再按结束。加按其他键取消尚未触发的动作。可改组合或功能键；长按需辅助功能权限。</small><small id="panel-shortcut-health" role="status"></small></div>
                     <button id="settings-shortcut-change" type="button">设置和测试</button>
                   </div>
                   <p class="settings-shortcut-map">展开后：1 首页 · 2 待办 · 3 笔记 · 4 链接 · 5 录制 · 6 剪贴 · 7 密钥 · 8 设置 · 9 待确认</p>
@@ -776,6 +776,12 @@
     <script src="reference-view.js"></script>
     <script src="quick-record-view.js"></script>
     <script src="launcher-model.js"></script>
+    <link rel="stylesheet" href="assistant-entry.css" />
+    <link rel="stylesheet" href="unified-ui.css" />
+  <script src="assistant-capabilities.js"></script>
+  <script src="transcription-model.js"></script>
+  <script src="assistant-entry-model.js"></script>
+    <script src="assistant-entry.js"></script>
     <script src="launcher.js"></script>
   </body>
 </html>

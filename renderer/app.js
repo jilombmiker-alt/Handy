@@ -472,7 +472,14 @@ const OPENING_SETTLE_MS = 220;
 const HEAVY_LOAD_AFTER_OPEN_MS = 240;
 
 function nextAnimationFrame() {
-  return new Promise((resolve) => requestAnimationFrame(resolve));
+  // A hidden Electron window may stop delivering rAF. A collapse/reopen race
+  // must not leave the mode queue waiting forever on an invisible frame.
+  return new Promise((resolve) => {
+    let settled=false,frame;
+    const finish=()=>{if(settled)return;settled=true;clearTimeout(timer);if(frame!==undefined)cancelAnimationFrame(frame);resolve();};
+    const timer=setTimeout(finish,80);
+    frame=requestAnimationFrame(finish);
+  });
 }
 
 function waitForPanelMotion() {
@@ -643,6 +650,8 @@ panel.addEventListener('click', (e) => {
 // Escape 不会原生到达页面（被浏览器层吞掉），由主进程 before-input-event 转发
 if (window.notchAPI && typeof window.notchAPI.onEscape === 'function') {
   window.notchAPI.onEscape(() => {
+    const menu=document.querySelector('.handy-menu:popover-open');
+    if(menu){menu.hidePopover();document.querySelector(`[aria-controls="${menu.id}"]`)?.focus();return;}
     if (window.PanelDetachHandles?.cancelActive()) return;
     if (window.PanelPlacement?.closeMenu()) return;
     const el = document.activeElement;

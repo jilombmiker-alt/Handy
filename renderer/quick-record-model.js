@@ -33,7 +33,14 @@
   }
   function change(state,command,now,id){
     const s=structuredClone(state), r=active(s), action=command.action;
-    if(action==='capture'){
+    if(action==='store'){
+      if(typeof command.requestId!=='string'||!command.requestId||command.requestId.length>100||typeof command.content!=='string'||!command.content.trim()||command.content.length>60000)throw Error('invalid_input');
+      // Idempotent independent note: do not steal the active editor or manufacture an audio source.
+      if(!s.records.some(n=>n.sourceEntryId===command.requestId)){
+        if(s.records.length>=1000)throw Error('record_limit');
+        s.records.unshift({...blank(id,now,command.content),sourceEntryId:command.requestId});
+      }
+    }else if(action==='capture'){
       if(typeof command.recordingId!=='string'||!command.recordingId||command.recordingId.length>200||typeof command.content!=='string'||!command.content.trim()||command.content.length>60000)throw Error('invalid_input');
       const existing=s.records.find(n=>n.sourceRecordingId===command.recordingId);
       if(existing){

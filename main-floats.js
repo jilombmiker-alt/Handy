@@ -103,7 +103,7 @@ function createFloatingRuntime(options) {
   function persistPosition(entry) {
     const file = options.positionFile();
     const positions = safeLoad(file);
-    positions[entry.key] = entry.window.getBounds();
+    positions[entry.key] = {...entry.window.getBounds(),pinned:entry.window.isAlwaysOnTop()};
     // Keep bounded history; no content or credentials are saved in this file.
     const bounded = Object.fromEntries(Object.entries(positions).slice(-210));
     try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(bounded), { mode: 0o600 }); } catch {}
@@ -130,7 +130,7 @@ function createFloatingRuntime(options) {
     if(kind==='module'&&!Object.hasOwn(moduleCatalog,id))return {ok:false,error:'invalid_module'};
     if (kind === 'note' && (!/^[\w-]{1,180}$/.test(id))) return { ok: false, error: 'invalid_id' };
     const key = ['note','module'].includes(kind) ? `${kind}:${id}` : kind;
-    if(options.openInline)return options.openInline({kind,id,review:payload.review});
+    if(options.openInline&&payload.detached!==true)return options.openInline({kind,id,review:payload.review});
     if (windows.has(key)) { windows.get(key).window.show(); windows.get(key).window.focus(); return { ok: true, key }; }
     if (windows.size >= 12) return { ok: false, error: 'window_limit' };
     if (kind === 'note'||kind==='module') { const found = await forward({ action: 'get', kind, id }); if (!found?.ok) return found; }
@@ -142,14 +142,15 @@ function createFloatingRuntime(options) {
     const timer = kind === 'module' && id === 'pomodoro';
     const defaults = { x: payload.atCursor ? cursor.x - 100 : area.x + area.width - 470 - windows.size * 24,
       y: payload.atCursor ? cursor.y - 20 : area.y + 90 + windows.size * 24, width: 440, height: kind === 'recorder' ? 400 : 580 };
-    const desired = payload.atCursor ? defaults : saved || defaults;
+    let desired = payload.atCursor ? defaults : saved || defaults;
+    if(!saved&&!payload.atCursor){const sized=fitBounds(desired,area);desired=placeTool(sized,area,[...windows.values()].filter(e=>!e.window.isDestroyed()).map(e=>e.window.getBounds())).bounds;}
     const win = new BrowserWindow({ ...fitBounds(music ? {...desired,width:400,height:140} : timer ? {...desired,width:400,height:210} : desired, area, music ? 140 : timer ? 210 : 180), minWidth: music ? 380 : timer ? 360 : 320, minHeight: music ? 140 : timer ? 210 : kind === 'recorder' ? 280 : 360,
       frame: false, show: false, resizable: true, movable: true, alwaysOnTop: true, skipTaskbar: true, fullscreenable: false,
       transparent: music, backgroundColor: music ? '#00000000' : '#ffffff', webPreferences: { preload: path.join(__dirname, 'renderer', 'floating-preload.js'),
         partition: 'floating-widgets', sandbox: true, contextIsolation: true, nodeIntegration: false } });
     const entry = { key, kind, id, window: win, dragging: null };
     windows.set(key, entry);
-    win.setAlwaysOnTop(true, 'floating');
+    win.setAlwaysOnTop(saved?.pinned!==false, 'floating');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     win.webContents.session.setPermissionRequestHandler((_web, _permission, cb) => cb(false));
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -171,7 +172,7 @@ function createFloatingRuntime(options) {
     try { await win.loadFile(path.join(__dirname, 'renderer', 'floating.html')); }
     catch { if (!win.isDestroyed()) win.destroy(); return { ok: false, error: 'window_load_failed' }; }
     entry.ready = true;
-    if (entry.closeRequested) win.close(); else win.show();
+    if (entry.closeRequested) win.close(); else { win.show(); win.focus(); }
     emitList();
     return { ok: true, key };
   }
@@ -255,7 +256,7 @@ function createFloatingRuntime(options) {
     if(payload.action==='pin-state')return {ok:true,pinned:entry.window.isAlwaysOnTop()};
     if(payload.action==='pin'){
       if(typeof payload.pinned!=='boolean')return {ok:false,error:'invalid_action'};
-      entry.window.setAlwaysOnTop(payload.pinned,'floating');return {ok:true,pinned:entry.window.isAlwaysOnTop()};
+      entry.window.setAlwaysOnTop(payload.pinned,'floating');persistPosition(entry);return {ok:true,pinned:entry.window.isAlwaysOnTop()};
     }
     if (payload.action === 'settings') { options.openSettings(); return { ok: true }; }
     if(payload.action==='timer-layout'){

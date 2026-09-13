@@ -16,7 +16,12 @@ function createTimerStore(file,{now=Date.now}={}){
   function command(c){load();if(error)return {ok:false,error};try{
     if(!c||c.revision!==state.revision)throw Error('conflict');
     const next=clone(state),at=now();let a=next.active;
-    if(c.action==='start'){
+    if(c.action==='start'||c.action==='replace'){
+      if(c.action==='replace'){
+        if(!a||c.id!==a.id)throw Error('stale_session');
+        if(next.history.length>=10000)throw Error('history_full');
+        next.history.push({...a,elapsedMs:elapsed(a,at),running:false,endedAt:at});a=null;
+      }
       if(a)throw Error('timer_busy');
       const mode=c.mode||next.settings.mode,seconds=mode==='countup'?next.settings.seconds:Number(c.seconds??next.settings.seconds),title=String(c.title||'').trim();
       if(!['countup','countdown'].includes(mode)||!Number.isInteger(seconds)||seconds<1||seconds>86400||title.length>200)throw Error('invalid_duration');
@@ -44,4 +49,14 @@ function createTimerStore(file,{now=Date.now}={}){
   function pauseForExit(){const s=snapshot();return s.ok&&s.active?.running?command({action:'pause',revision:s.revision,id:s.active.id}):s;}
   return {snapshot,command,tick,pauseForExit};
 }
-module.exports={createTimerStore,elapsed};
+function timerPresentation(snapshot){
+  const a=snapshot?.ok&&snapshot.active;
+  if(!a)return {title:'',menu:'打开计时小窗',active:false};
+  const remaining=a.mode==='countdown'?Math.max(0,a.plannedMs-a.currentMs):a.currentMs;
+  const seconds=a.mode==='countdown'?Math.ceil(remaining/1000):Math.floor(remaining/1000);
+  const time=(seconds>=3600?String(Math.floor(seconds/3600)).padStart(2,'0')+':':'')+String(Math.floor(seconds/60)%60).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+  const due=a.mode==='countdown'&&remaining===0;
+  const title=due?'◷ 时间到':`${a.running?'◷':'Ⅱ'} ${time}`;
+  return {title,active:true,menu:`${due?'时间到':a.running?(a.mode==='countdown'?'剩余 ':'已用 ')+time:'已暂停 '+time} · 打开计时小窗`};
+}
+module.exports={createTimerStore,elapsed,timerPresentation};

@@ -25,3 +25,11 @@ website/public/product-captures/raw/
 .env
 .env.*
 !.env.example
+
+# Signing identities are personal; never ship private keys or keychains.
+*.p12
+*.pfx
+*.key
+*.keychain
+*.keychain-db
+signing.local.json

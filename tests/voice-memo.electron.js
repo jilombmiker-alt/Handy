@@ -98,11 +98,11 @@ async function main(){
   await run(host,`document.getElementById('voice-recover').click()`);await wait(async()=>(await getRows(host)).length===4);
   await run(host,`document.getElementById('voice-recover').click()`);assert.equal((await getRows(host)).length,4);
   await run(host,`Notebook.detach('recorder')`);
-  const float=await wait(()=>BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('/floating.html')));
-  await wait(()=>run(float,`!!document.querySelector('[data-voice-auto]')`));
-  assert.equal(await run(float,`document.querySelector('[data-voice-auto]').checked`),false);
-  await run(float,`floatingAPI.request({action:'auto-on'})`);assert.equal((await run(host,'PanelRecording.snapshot()')).autoOrganize,true);
-  assert.equal((await run(float,`floatingAPI.request({action:'results'})`)).ok,true);
+  // The current product opens tools inline; the old satellite expectation is obsolete.
+  await wait(()=>run(host,`ToolLauncher.current==='recorder'`));
+  assert.equal((await run(host,'PanelRecording.snapshot()')).autoOrganize,false);
+  await run(host,`PanelRecording.command('auto-on')`);assert.equal((await run(host,'PanelRecording.snapshot()')).autoOrganize,true);
+  assert.equal((await run(host,`PanelRecording.command('results')`)).ok,true);
   await run(host,`setMode(true);setActiveTab('recordings')`);host.setBounds({x:40,y:60,width:1288,height:680});host.show();
   await run(host,`document.querySelector('.voice-actions button').click()`);await wait(()=>run(host,`document.querySelector('.voice-cleaned')?.value==='暂定周六完成，预算 120 元。'`));
   const evidence=process.env.PANEL_VOICE_CAPTURE_DIR||fs.mkdtempSync(path.join(os.tmpdir(),'panel-voice-evidence-'));fs.mkdirSync(evidence,{recursive:true});
@@ -111,9 +111,9 @@ async function main(){
     await run(host,`PanelAppearance.setTheme('${theme}')`);await new Promise(r=>setTimeout(r,500));
     fs.writeFileSync(path.join(evidence,`voice-${theme}.png`),(await host.webContents.capturePage()).toPNG());
   }
-  float.setSize(320,440);float.show();
-  assert.equal(await run(float,'document.documentElement.scrollWidth>innerWidth'),false);
-  fs.writeFileSync(path.join(evidence,'recorder-narrow.png'),(await float.webContents.capturePage()).toPNG());
+  host.setSize(760,580);
+  assert.equal(await run(host,'document.documentElement.scrollWidth>innerWidth'),false);
+  fs.writeFileSync(path.join(evidence,'recorder-inline.png'),(await host.webContents.capturePage({},{stayHidden:true})).toPNG());
   if(!process.argv.includes('--preview')){
     const remove=(await getRows(host))[0];
     assert.equal(await run(host,`notchAPI.deleteRecording(${JSON.stringify(remove.audioPath)})`),true);

@@ -52,6 +52,12 @@ async function main(){
   await run(`document.body.dispatchEvent(new Event('pointerenter'))`);assert.equal(await run(`document.body.classList.contains('music-idle')`),false);
   const dir=process.env.PANEL_MUSIC_CAPTURE_DIR;
   if(dir)fs.mkdirSync(dir,{recursive:true});
+  snapshot={...snapshot,title:'测试歌曲',artist:'测试歌手',metadataAvailable:true,elapsed:65,duration:240,playing:true};
+  await click('refresh');await pause(150);
+  assert.equal(await run(`document.querySelector('.music-float-time').textContent`),'1:05 / 4:00');
+  assert.equal(await run(`document.querySelector('.music-float-progress').value`),65);
+  snapshot={...snapshot,elapsed:68};await pause(1200);
+  assert.equal(await run(`document.querySelector('.music-float-progress').value`),68,'passive polling updates actual progress');
   for(const theme of ['white','obsidian'])for(const musicForm of ['bar','cover']){
     snapshot={...snapshot,theme,musicForm};await click('refresh');await pause(400);
     assert.equal(await run(`document.body.dataset.musicForm`),'bar','Float ignores legacy shared cover preference');
@@ -68,7 +74,8 @@ async function main(){
   assert.equal(await run(`document.querySelector('.music-float').scrollHeight<=document.querySelector('.music-float').clientHeight`),true,'Long recovery message fits the compact window');
   if(dir)fs.writeFileSync(path.join(dir,'error-music.png'),(await win.webContents.capturePage()).toPNG());
   error=null;await click('refresh');await pause(140);
-  snapshot={...snapshot,installed:false,running:false};await click('refresh');await pause(140);
+  snapshot={...snapshot,installed:false,running:false,metadataAvailable:false,elapsed:null,duration:null};await click('refresh');await pause(140);
+  assert.equal(await run(`document.querySelector('.music-float-progress').hidden`),true,'old progress clears when player disconnects');
   assert.equal(await run(`document.querySelector('[data-music-operation="toggle"]').disabled`),true,'Missing client remains disabled after refresh completes');
   snapshot={...snapshot,title:'未安装汽水音乐',artist:'',detail:'需要本地客户端'};
   await click('refresh');await pause(400);
